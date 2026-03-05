@@ -1,6 +1,6 @@
 from core.models.article import Article,DATA_STATUS
 import core.db as db
-from tools.fix import fix_html
+from tools.fix import fix_content
 from core.wait import Wait
 from core.wx.base import WxGather
 from time import sleep
@@ -15,9 +15,11 @@ def fetch_articles_without_content():
     session = DB.get_session()
     ga=WxGather().Model()
     try:
-        # 查询content为空的文章
-        from sqlalchemy import or_
-        articles = session.query(Article).filter(or_(Article.content.is_(None), Article.content == "")).limit(10).all()
+        # 查询content为空的文章（使用 func.length 兼容 Oracle CLOB）
+        from sqlalchemy import or_, func
+        articles = session.query(Article).filter(
+            or_(Article.content.is_(None), func.length(Article.content) == 0)
+        ).limit(10).all()
         
         if not articles:
             print_warning("暂无需要获取内容的文章")
@@ -40,7 +42,9 @@ def fetch_articles_without_content():
             if content:
                 # 更新内容
                 article.content = content
-                article.content_html =fix_html(content)
+                html, md = fix_content(content)
+                article.content_html = html
+                article.content_markdown = md
                 if  content=="DELETED":
                     print_error(f"获取文章 {article.title} 内容已被发布者删除")
                     article.status = DATA_STATUS.DELETED
@@ -90,7 +94,7 @@ def start_sync_content():
     scheduler.clear_all_jobs()
     def do_sync():
         task_queue.add_task(fetch_articles_without_content)
-    job_id=scheduler.add_cron_job(do_sync,cron_expr=cron_exp)
+    job_id=scheduler.add_cron_job(do_sync,cron_expr=cron_exp,tag="同步文章内容")
     print_success(f"已添自动同步文章内容任务: {job_id}")
     scheduler.start()
 if __name__ == "__main__":

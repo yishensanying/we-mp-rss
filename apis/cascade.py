@@ -743,6 +743,7 @@ async def upload_articles(
                     url=article_data.get("url"),
                     description=article_data.get("description"),
                     content=article_data.get("content"),
+                    content_markdown=article_data.get("content_markdown"),
                     status=article_data.get("status", 1),
                     publish_time=article_data.get("publish_time"),
                     created_at=datetime.utcnow(),
@@ -754,6 +755,7 @@ async def upload_articles(
                 # 更新现有文章
                 existing.title = article_data.get("title", existing.title)
                 existing.content = article_data.get("content", existing.content)
+                existing.content_markdown = article_data.get("content_markdown", existing.content_markdown)
                 existing.updated_at = datetime.utcnow()
         
         # 更新分配记录的文章统计

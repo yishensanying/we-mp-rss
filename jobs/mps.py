@@ -129,20 +129,30 @@ def run(job_id:str=None,isTest=False):
             add_job(get_feeds(task),task,isTest=isTest)
             pass
     return tasks
+def _scheduled_job(task_id):
+    """定时任务包装：执行时从数据库获取最新的任务配置和公众号列表"""
+    from .taskmsg import get_message_task
+    tasks = get_message_task(task_id)
+    if not tasks:
+        print_error(f"任务[{task_id}]不存在或已禁用")
+        return
+    task = tasks[0]
+    feeds = get_feeds(task)
+    add_job(feeds, task)
+
 def start_job(job_id:str=None):
     from .taskmsg import get_message_task
     tasks=get_message_task(job_id)
     if not tasks:
         print("没有任务")
         return
-    tag="定时采集"
     for task in tasks:
         cron_exp=task.cron_exp
         if not cron_exp:
             print_error(f"任务[{task.id}]没有设置cron表达式")
             continue
-      
-        job_id=scheduler.add_cron_job(add_job,cron_expr=cron_exp,args=[get_feeds(task),task],job_id=str(task.id),tag="定时采集")
+        task_id=str(task.id)
+        job_id=scheduler.add_cron_job(_scheduled_job,cron_expr=cron_exp,args=[task_id],job_id=task_id,tag="定时采集")
         print(f"已添加任务: {job_id}")
     scheduler.start()
     print("启动任务")

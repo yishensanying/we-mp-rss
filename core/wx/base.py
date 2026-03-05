@@ -66,6 +66,7 @@ class WxGather:
         return wx
     def __init__(self,is_add:bool=False):
         self.articles=[]
+        self.aids=[]
         self.is_add=is_add
         self._cookies={}
         self.start_time = None  # 记录开始时间

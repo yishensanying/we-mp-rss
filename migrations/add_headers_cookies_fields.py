@@ -18,18 +18,18 @@ def migrate():
     try:
         # 检查表是否存在
         inspector = engine.dialect.get Inspector(engine)
-        if 'message_tasks' not in inspector.get_table_names():
-            print_error("message_tasks 表不存在，跳过迁移")
+        if 'we_message_tasks' not in inspector.get_table_names():
+            print_error("we_message_tasks 表不存在，跳过迁移")
             return
 
         # 获取现有列
-        columns = [col['name'] for col in inspector.get_columns('message_tasks')]
+        columns = [col['name'] for col in inspector.get_columns('we_message_tasks')]
 
         # 检查并添加 headers 字段
         if 'headers' not in columns:
             print_info("添加 headers 字段...")
             with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE message_tasks ADD COLUMN headers TEXT"))
+                conn.execute(text("ALTER TABLE we_message_tasks ADD COLUMN headers TEXT"))
                 conn.commit()
             print_success("headers 字段添加成功")
         else:
@@ -39,7 +39,7 @@ def migrate():
         if 'cookies' not in columns:
             print_info("添加 cookies 字段...")
             with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE message_tasks ADD COLUMN cookies TEXT"))
+                conn.execute(text("ALTER TABLE we_message_tasks ADD COLUMN cookies TEXT"))
                 conn.commit()
             print_success("cookies 字段添加成功")
         else:

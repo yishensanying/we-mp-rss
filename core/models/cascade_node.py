@@ -4,7 +4,7 @@ from datetime import datetime
 class CascadeNode(Base):
     """级联节点模型 - 支持父子节点架构"""
     from_attributes = True
-    __tablename__ = 'cascade_nodes'
+    __tablename__ = 'we_cascade_nodes'
     
     id = Column(String(255), primary_key=True)  # 节点ID
     node_type = Column(Integer, nullable=False, default=0)  # 节点类型: 0=父节点, 1=子节点
@@ -27,7 +27,7 @@ class CascadeNode(Base):
 class CascadeSyncLog(Base):
     """级联同步日志 - 记录父子节点间的同步操作"""
     from_attributes = True
-    __tablename__ = 'cascade_sync_logs'
+    __tablename__ = 'we_cascade_sync_logs'
 
     id = Column(String(255), primary_key=True)
     node_id = Column(String(255), nullable=False)  # 节点ID

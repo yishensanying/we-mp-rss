@@ -19,7 +19,7 @@ def laxArticle():
     info=ArticleInfo()
     session=DB.get_session()
     #获取没有内容的文章数量 - 只查询content字段
-    info.no_content_count=session.query(Article).filter(Article.content == None).count()
+    info.no_content_count=session.query(Article).filter(Article.content.is_(None)).count()
     #所有文章数量 - 只查询id字段
     info.all_count=session.query(Article.id).count()
     #有内容的文章数量

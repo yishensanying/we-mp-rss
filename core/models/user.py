@@ -1,6 +1,6 @@
 from .base import Base, Column, String, Integer, DateTime, Boolean,Text
 class User(Base):
-    __tablename__ = 'users'
+    __tablename__ = 'we_users'
     id = Column(String(255), primary_key=True)
     username = Column(String(50), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)

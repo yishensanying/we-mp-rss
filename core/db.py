@@ -39,17 +39,24 @@ class Db:
                     except Exception as e:
                         pass
                     open(db_path, 'w').close()
-            self.engine = create_engine(con_str,
-                                     pool_size=2,          # 最小空闲连接数
-                                     max_overflow=20,      # 允许的最大溢出连接数
-                                     pool_timeout=30,      # 获取连接时的超时时间（秒）
-                                     echo=False,
-                                     pool_recycle=60,  # 连接池回收时间（秒）
-                                     isolation_level="AUTOCOMMIT",  # 设置隔离级别
-                                    #  isolation_level="READ COMMITTED",  # 设置隔离级别
-                                    #  query_cache_size=0,
-                                     connect_args={"check_same_thread": False} if con_str.startswith('sqlite:///') else {}
-                                     )
+
+            engine_kwargs = dict(
+                pool_size=2,
+                max_overflow=20,
+                pool_timeout=30,
+                echo=False,
+                pool_recycle=60,
+                isolation_level="AUTOCOMMIT",
+            )
+
+            if con_str.startswith('sqlite:///'):
+                engine_kwargs["connect_args"] = {"check_same_thread": False}
+            elif con_str.startswith('oracle'):
+                engine_kwargs["pool_recycle"] = 1800
+                engine_kwargs["pool_pre_ping"] = True
+                engine_kwargs["thick_mode"] = False
+
+            self.engine = create_engine(con_str, **engine_kwargs)
             self.session_factory=self.get_session_factory()
         except Exception as e:
             print(f"Error creating database connection: {e}")
@@ -93,48 +100,57 @@ class Db:
      
     def add_article(self, article_data: dict,check_exist=False) -> bool:
         try:
+            result = True
             session=self.get_session()
             from datetime import datetime
             art = Article(**article_data)
             if art.id:
                art.id=f"{str(art.mp_id)}-{art.id}".replace("MP_WXS_","")
             
-            if check_exist:
-                # 检查文章是否已存在
-                existing_article = session.query(Article).filter(Article.url == art.url or Article.id == art.id).first()
-                if existing_article is not None:
-                    print_warning(f"Article already exists: {art.id}")
-                    return False
-                
-            if art.created_at is None:
-                art.created_at=datetime.now()
+            existing = session.query(Article).filter(Article.id == art.id).first()
+
+            if check_exist and existing is not None:
+                print_warning(f"Article already exists: {art.id}")
+                return False
+
+            now = datetime.now()
+            has_new_content = art.content and art.content.strip()
+
+            if existing is not None:
+                art.created_at = existing.created_at
+                if not has_new_content:
+                    art.content = existing.content
+                    art.content_html = existing.content_html
+                    art.content_markdown = existing.content_markdown
+                result = False
+            else:
+                if art.created_at is None:
+                    art.created_at = now
+                elif isinstance(art.created_at, str):
+                    art.created_at = datetime.strptime(art.created_at, '%Y-%m-%d %H:%M:%S')
+
             if art.updated_at is None:
-                art.updated_at=datetime.now()
+                art.updated_at = now
+            elif isinstance(art.updated_at, str):
+                art.updated_at = datetime.strptime(art.updated_at, '%Y-%m-%d %H:%M:%S')
             if art.updated_at_millis is None:
-                art.updated_at_millis=int(datetime.now().timestamp()*1000)
+                art.updated_at_millis = int(now.timestamp() * 1000)
 
-            if isinstance(art.created_at, str):
-                art.created_at=datetime.strptime(art.created_at ,'%Y-%m-%d %H:%M:%S')
-            if isinstance(art.updated_at, str):
-                art.updated_at=datetime.strptime(art.updated_at,'%Y-%m-%d %H:%M:%S')
-            art.content=art.content
-
-            if art.content_html is None:
-                from tools.fix import fix_html
-                art.content_html = fix_html(art.content)
+            if has_new_content:
+                from tools.fix import fix_content
+                html, md = fix_content(art.content)
+                art.content_html = html
+                art.content_markdown = md
             from core.models.base import DATA_STATUS
-            art.status=DATA_STATUS.ACTIVE
-            session.add(art)
-            # self._session.merge(art)
-            sta=session.commit()
+            art.status = DATA_STATUS.ACTIVE
+            session.merge(art)
+            session.commit()
             
         except Exception as e:
-            if "UNIQUE" in str(e) or "Duplicate entry" in str(e):
-                print_warning(f"Article already exists: {art.id}")
-            else:
-                print_error(f"Failed to add article: {e}")
-            return False
-        return True    
+            session.rollback()
+            print_error(f"Failed to add/update article: {e}")
+            result = False
+        return result
         
     def get_articles(self, id:str=None, limit:int=30, offset:int=0) -> List[Article]:
         try:

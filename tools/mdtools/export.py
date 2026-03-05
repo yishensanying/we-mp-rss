@@ -19,7 +19,7 @@ def process_single_article(art, add_title, remove_images, remove_links, export_m
     from core.content_format import format_content
     from core.common.file_tools import sanitize_filename
     
-    markdown_content = format_content(art.content, "markdown")
+    markdown_content = art.content_markdown if art.content_markdown else format_content(art.content, "markdown")
     
     # 转换为文档对象（不保存文件）
     # 只有在需要导出docx时才进行转换

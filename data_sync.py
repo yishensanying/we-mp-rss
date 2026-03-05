@@ -80,7 +80,57 @@ class DatabaseSynchronizer:
                     from sqlalchemy import SmallInteger
                     column.type = SmallInteger()
                     self.logger.debug(f"已将列 {column.name} 的类型从 TINYINT 映射为 SmallInteger")
+
+            # Oracle类型映射
+            elif "oracle" in self.db_url:
+                # MEDIUMTEXT映射为CLOB
+                if (hasattr(column.type, "__visit_name__") and column.type.__visit_name__ == "MEDIUMTEXT") or \
+                   "MEDIUMTEXT" in type_str or \
+                   getattr(column.type, "__class__", None).__name__ == "MEDIUMTEXT":
+                    from sqlalchemy import Text
+                    column.type = Text()
+                    self.logger.debug(f"已将列 {column.name} 的类型从 MEDIUMTEXT 映射为 CLOB(Text)")
+
+                # LONGTEXT映射为CLOB
+                if "LONGTEXT" in type_str or \
+                   getattr(column.type, "__class__", None).__name__ == "LONGTEXT":
+                    from sqlalchemy import Text
+                    column.type = Text()
+                    self.logger.debug(f"已将列 {column.name} 的类型从 LONGTEXT 映射为 CLOB(Text)")
+
+                # TINYINT映射为NUMBER(3)
+                if "TINYINT" in type_str or \
+                   getattr(column.type, "__class__", None).__name__ == "TINYINT":
+                    from sqlalchemy import SmallInteger
+                    column.type = SmallInteger()
+                    self.logger.debug(f"已将列 {column.name} 的类型从 TINYINT 映射为 SmallInteger")
     
+    def _map_oracle_col_type(self, sa_type):
+        """将 SQLAlchemy 类型映射为 Oracle DDL 类型字符串"""
+        type_str = str(sa_type).upper()
+        if "TEXT" in type_str or "MEDIUMTEXT" in type_str or "LONGTEXT" in type_str or "CLOB" in type_str:
+            return "CLOB"
+        elif "BIGINT" in type_str:
+            return "NUMBER(19)"
+        elif "SMALLINT" in type_str or "TINYINT" in type_str:
+            return "NUMBER(5)"
+        elif "INTEGER" in type_str or "INT" in type_str:
+            return "NUMBER(10)"
+        elif "BOOLEAN" in type_str:
+            return "NUMBER(1)"
+        elif "VARCHAR" in type_str or "STRING" in type_str:
+            import re
+            m = re.search(r'\((\d+)\)', type_str)
+            length = m.group(1) if m else "255"
+            return f"VARCHAR2({length} CHAR)"
+        elif "DATETIME" in type_str or "TIMESTAMP" in type_str:
+            return "TIMESTAMP"
+        elif "DATE" in type_str:
+            return "DATE"
+        elif "JSON" in type_str:
+            return "CLOB"
+        return str(sa_type)
+
     def _check_database_permissions(self):
         """检查数据库权限"""
         try:
@@ -110,7 +160,27 @@ class DatabaseSynchronizer:
                         self.logger.info("请联系数据库管理员执行以下命令:")
                         self.logger.info(f"GRANT USAGE ON SCHEMA public TO {user_info[0]};")
                         return False
-                        
+
+                elif "oracle" in self.db_url:
+                    from sqlalchemy import text
+                    result = conn.execute(text("SELECT USER FROM DUAL"))
+                    user_info = result.fetchone()
+                    self.logger.info(f"Oracle 当前用户: {user_info[0]}")
+
+                    result = conn.execute(text(
+                        "SELECT PRIVILEGE FROM USER_SYS_PRIVS WHERE PRIVILEGE IN ('CREATE TABLE', 'CREATE SESSION', 'UNLIMITED TABLESPACE')"
+                    ))
+                    privs = [row[0] for row in result.fetchall()]
+
+                    if 'CREATE TABLE' not in privs:
+                        self.logger.error("当前用户没有 CREATE TABLE 权限")
+                        self.logger.info(f"请联系DBA执行: GRANT CREATE TABLE TO {user_info[0]};")
+                        return False
+                    if 'CREATE SESSION' not in privs:
+                        self.logger.error("当前用户没有 CREATE SESSION 权限")
+                        self.logger.info(f"请联系DBA执行: GRANT CREATE SESSION TO {user_info[0]};")
+                        return False
+
                 return True
         except Exception as e:
             self.logger.warning(f"权限检查失败: {e}")
@@ -122,7 +192,7 @@ class DatabaseSynchronizer:
         SQLite 不支持 ALTER COLUMN，需要重建表
         """
         from sqlalchemy import text
-        table_name = 'cascade_task_allocations'
+        table_name = 'we_cascade_task_allocations'
         
         try:
             inspector = inspect(self.engine)
@@ -195,7 +265,7 @@ class DatabaseSynchronizer:
         解决毫秒时间戳超出 INT 范围的问题
         """
         from sqlalchemy import text
-        table_name = 'articles'
+        table_name = 'we_articles'
         
         try:
             inspector = inspect(self.engine)
@@ -218,15 +288,15 @@ class DatabaseSynchronizer:
             
             with self.engine.begin() as conn:
                 if "mysql" in self.db_url:
-                    # MySQL 直接修改列类型
                     conn.execute(text(f"ALTER TABLE {table_name} MODIFY COLUMN updated_at_millis BIGINT"))
                     self.logger.info(f"{table_name}.updated_at_millis 已改为 BIGINT")
                 elif "postgresql" in self.db_url or "postgres" in self.db_url:
-                    # PostgreSQL
                     conn.execute(text(f'ALTER TABLE "{table_name}" ALTER COLUMN updated_at_millis TYPE BIGINT'))
                     self.logger.info(f"{table_name}.updated_at_millis 已改为 BIGINT")
+                elif "oracle" in self.db_url:
+                    conn.execute(text(f"ALTER TABLE {table_name} MODIFY (updated_at_millis NUMBER(19))"))
+                    self.logger.info(f"{table_name}.updated_at_millis 已改为 NUMBER(19)")
                 else:
-                    # SQLite 不支持 ALTER COLUMN，跳过（新表会自动使用正确类型）
                     self.logger.info(f"SQLite 不支持 ALTER COLUMN，跳过迁移")
             
         except Exception as e:
@@ -266,14 +336,13 @@ class DatabaseSynchronizer:
             
             # 为不同数据库类型处理自增主键
             if "sqlite" in self.db_url:
-                # SQLite使用AUTOINCREMENT
                 pass  # SQLAlchemy默认处理
             elif "mysql" in self.db_url:
-                # MySQL使用AUTO_INCREMENT
                 pass  # SQLAlchemy默认处理
             elif "postgresql" in self.db_url or "postgres" in self.db_url:
-                # PostgreSQL使用SERIAL或IDENTITY
                 pass  # SQLAlchemy默认处理
+            elif "oracle" in self.db_url:
+                pass  # SQLAlchemy默认处理 (Oracle使用IDENTITY或序列)
             
             # 创建或更新表结构
             for model in self.models.values():
@@ -298,10 +367,11 @@ class DatabaseSynchronizer:
                                 try:
                                     with self.engine.begin() as conn:
                                         if "postgresql" in self.db_url or "postgres" in self.db_url:
-                                            # PostgreSQL语法
                                             conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN "{col_name}" {model_col.type}'))
+                                        elif "oracle" in self.db_url:
+                                            col_type = self._map_oracle_col_type(model_col.type)
+                                            conn.execute(text(f"ALTER TABLE {table_name} ADD ({col_name} {col_type})"))
                                         else:
-                                            # SQLite和MySQL语法
                                             conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {model_col.type}"))
                                     self.logger.info(f"新增字段: {table_name}.{col_name}")
                                 except SQLAlchemyError as e:
@@ -343,6 +413,9 @@ def main():
     
     # MySQL
     # synchronizer = DatabaseSynchronizer(db_url="mysql+pymysql://username:password@localhost:3306/dbname")
+    
+    # Oracle
+    # synchronizer = DatabaseSynchronizer(db_url="oracle+oracledb://username:password@localhost:1521/service_name")
     from core.config import cfg
     db_url=cfg.get("db","sqlite:///data/db.db")
     synchronizer = DatabaseSynchronizer(db_url=db_url)

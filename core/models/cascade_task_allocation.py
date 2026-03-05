@@ -14,7 +14,7 @@ class CascadeTaskAllocation(Base):
     3. 追踪任务执行状态
     """
     from_attributes = True
-    __tablename__ = 'cascade_task_allocations'
+    __tablename__ = 'we_cascade_task_allocations'
     
     id = Column(String(255), primary_key=True)  # 分配记录ID
     

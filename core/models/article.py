@@ -3,7 +3,7 @@ from sqlalchemy import BigInteger
 from  .base import Base,Column,String,Integer,DateTime,Text,DATA_STATUS
 class ArticleBase(Base):
     from_attributes = True
-    __tablename__ = 'articles'
+    __tablename__ = 'we_articles'
     id = Column(String(255), primary_key=True)
     mp_id = Column(String(255))
     title = Column(String(1000))
@@ -13,13 +13,14 @@ class ArticleBase(Base):
     status = Column(Integer,default=1)
     publish_time = Column(Integer,index=True)
     created_at = Column(DateTime)
-    updated_at = Column(BigInteger)  
+    updated_at = Column(DateTime)
     updated_at_millis = Column(BigInteger,index=True)  
     is_export = Column(Integer)
     is_read = Column(Integer, default=0)
 class Article(ArticleBase):
     content = Column(Text)
     content_html = Column(Text)
+    content_markdown = Column(Text)
     
     def to_dict(self):
         """将Article对象转换为字典"""
@@ -32,6 +33,7 @@ class Article(ArticleBase):
             'description': self.description,
             'content': self.content,
             'content_html': self.content_html,
+            'content_markdown': self.content_markdown,
             'status': self.status,
             'publish_time': self.publish_time,
             'created_at': self.created_at.isoformat() if self.created_at else None,

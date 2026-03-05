@@ -4,7 +4,7 @@ from .playwright_driver import PlaywrightController
 from typing import Dict
 from core.print import print_error,print_info,print_success,print_warning
 import time
-import core.wait as Wait
+from core.wait import Wait
 import base64
 import re
 from bs4 import BeautifulSoup
@@ -334,12 +334,11 @@ class WXArticleFetcher:
 
 
             try:
-
                 #获取发布时间
                 publish_time_str = page.locator("#publish_time").text_content().strip()
                 # 将发布时间转换为时间戳
                 publish_time = self.convert_publish_time_to_timestamp(publish_time_str)
-            except:
+            except Exception as e:
                 print_warning(f"获取作者和发布时间失败: {e}")
                 publish_time=""
             info["title"]=title
@@ -352,12 +351,12 @@ class WXArticleFetcher:
 
         except Exception as e:
             print_error(f"文章内容获取失败: {str(e)}")
-            print_warning(f"页面内容预览: {body[:50]}...")
-            # raise e
-            # 记录详细错误信息但继续执行
+            print_warning(f"页面内容预览: {locals().get('body', '')[:50]}...")
+            # 记录详细错误信息但继续执行：正文获取失败时仍尝试获取 mp_info
+            # info["content"] 为空时，下方 if 会跳过 mp_info 逻辑，避免访问已关闭的页面（如环境异常）
 
         try:
-            if info["content"]!="DELETED":
+            if info["content"] and info["content"]!="DELETED":
                 # 等待关键元素加载
                 # 使用更精确的选择器避免匹配多个元素
                 ele_logo = page.locator('#js_like_profile_bar .wx_follow_avatar img')

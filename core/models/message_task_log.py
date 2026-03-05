@@ -7,7 +7,7 @@ from datetime import datetime
 class MessageTask(Base):
     from_attributes = True
     # 指定数据库表名为 message_tasks
-    __tablename__ = 'message_tasks_logs'
+    __tablename__ = 'we_message_tasks_logs'
     
     # 定义 id 字段，作为主键，同时创建索引
     id = Column(String(255), primary_key=True, index=True)

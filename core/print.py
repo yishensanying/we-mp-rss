@@ -1,5 +1,6 @@
 import sys
 import os
+from datetime import datetime
 from colorama import init, Fore, Back, Style
 # 确保在Linux下也能正确初始化colorama
 if os.name == 'posix':
@@ -87,8 +88,9 @@ class ColorPrinter:
         return self
     
     def print(self, text, end='\n', file=sys.stdout):
-        """打印带格式的文本"""
-        formatted = f"{self._style}{self._back_color}{self._fore_color}{text}{Style.RESET_ALL}"
+        """打印带格式的文本（自动添加时间戳）"""
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        formatted = f"{self._style}{self._back_color}{self._fore_color}{ts} {text}{Style.RESET_ALL}"
         print(formatted, end=end, file=file)
         self._reset()
         return self

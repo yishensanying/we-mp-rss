@@ -1,7 +1,7 @@
 from  .base import Base,Column,String,Integer,DateTime,Text
 class Tags(Base):   
     #标签数据模型类，用于存储和管理标签信息
-    __tablename__ = 'tags'
+    __tablename__ = 'we_tags'
     # 标签唯一标识符，主键
     id = Column(String(255), primary_key=True)
     # 标签名称

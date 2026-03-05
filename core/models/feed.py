@@ -1,7 +1,7 @@
 from  .base import Base,Column,String,Integer,DateTime
 class Feed(Base):   
     from_attributes = True
-    __tablename__ = 'feeds'
+    __tablename__ = 'we_feeds'
     id = Column(String(255), primary_key=True)
     mp_name =Column(String(255))
     mp_cover = Column(String(255))

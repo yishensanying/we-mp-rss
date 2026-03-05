@@ -3,7 +3,7 @@ from datetime import datetime
 
 class AccessKey(Base):
     """API Access Key 模型"""
-    __tablename__ = 'access_keys'
+    __tablename__ = 'we_access_keys'
     
     id = Column(String(255), primary_key=True)
     user_id = Column(String(255), nullable=False)  # 关联用户ID

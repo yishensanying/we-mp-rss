@@ -5,7 +5,7 @@ from .base import Base,Column, Integer, String, Text
 class ConfigManagement(Base):
     from_attributes = True
     # 指定映射的数据库表名为 config_management
-    __tablename__ = 'config_management'
+    __tablename__ = 'we_config_management'
     # 配置项的键，唯一且建立索引，不能为空
     config_key = Column(String(100), primary_key=True, unique=True, index=True, nullable=False)
     # 配置项的值，使用 Text 类型，不能为空
