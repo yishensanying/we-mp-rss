@@ -146,11 +146,10 @@ def start_job(job_id:str=None):
         print(f"已添加任务: {job_id}")
     scheduler.start()
     print("启动任务")
-def start_all_task():
+def start_fix_article():
       #开启自动同步未同步 文章任务
     from jobs.fetch_no_article import start_sync_content
     start_sync_content()
-    start_job()
 if __name__ == '__main__':
     # do_job()
     # start_all_task()

@@ -475,7 +475,7 @@ class WXArticleFetcher:
         return content
    
     def clean_article_content(self,html_content: str):
-        from tools.html import htmltools
+        from tools.htmltools import htmltools
         html_content=self.fix_images(html_content)
         if not cfg.get("gather.clean_html",False):
             return html_content

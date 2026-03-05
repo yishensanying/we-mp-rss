@@ -172,6 +172,8 @@ def import_mps(data_file:str="data/data.txt"):
     else:
         print("未生成任何结果")
 
-
 if __name__ == '__main__':
-    import_mps()
+    data_file = "data/data.txt"
+    if len(sys.argv) > 1:
+        data_file = sys.argv[1]
+    import_mps(data_file)

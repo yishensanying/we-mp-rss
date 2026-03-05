@@ -52,10 +52,17 @@ if __name__ == '__main__':
         cascade_schedule_service.start()
 
     if  cfg.args.job =="True" and cfg.get("server.enable_job",False):
-        from jobs import start_all_task
-        threading.Thread(target=start_all_task,daemon=False).start()
+        from jobs import start_job
+        threading.Thread(target=start_job,daemon=False).start()
+        print_success("已开启定时任务")
     else:
         print_warning("未开启定时任务")
+    if cfg.get("gather.auto_fetch_article",False):
+        from jobs import start_fix_article
+        start_fix_article()
+        print_success("已开启自动修正文章任务")
+    else:
+        print_warning("未开启自动修正文章任务")
     print("启动服务器")
     AutoReload=cfg.get("server.auto_reload",False)
     thread=cfg.get("server.threads",1)
