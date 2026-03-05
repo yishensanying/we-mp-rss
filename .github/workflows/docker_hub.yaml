@@ -11,6 +11,7 @@ on:
       - 'Dockerfile'
       - 'requirements.txt'
       - 'config.example.yaml'
+      - 'static/index.html'
 
 env:
   REGISTRY: docker.io
