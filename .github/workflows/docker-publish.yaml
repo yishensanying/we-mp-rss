@@ -12,7 +12,6 @@ on:
       - 'Dockerfile'
       - 'requirements.txt'
       - 'config.example.yaml'
-      - 'static'
 #   release:
 #     types: [published]
 jobs:
