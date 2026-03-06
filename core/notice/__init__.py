@@ -2,6 +2,7 @@ from .wechat import send_wechat_message
 from .dingtalk import send_dingtalk_message
 from .feishu import send_feishu_message
 from .custom import send_custom_message
+from core.print import print_warning, print_info, print_error
 import re
 def notice( webhook_url, title, text,notice_type: str=None):
     """
@@ -25,7 +26,8 @@ def notice( webhook_url, title, text,notice_type: str=None):
         notice_type = 'feishu'
     else:
         notice_type = 'custom'
-    
+
+    print_warning(f"系统通知：\n通知类型：{notice_type}\n标题：{title}\n内容：{text}")
     if notice_type == 'wechat':
         send_wechat_message(webhook_url, title, text)
     elif notice_type == 'dingtalk':

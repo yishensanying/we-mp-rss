@@ -170,6 +170,7 @@ class CascadeTaskDispatcher:
     ):
         """发送通知到子节点"""
         try:
+            import httpx
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.post(
                     callback_url,
@@ -324,48 +325,69 @@ class CascadeTaskDispatcher:
             print_error(f"创建待认领任务失败: {str(e)}")
             return None
 
-    def dispatch_task_to_children(self, task: MessageTask, schedule_run_id: str) -> bool:
+    def dispatch_task_to_children(
+        self,
+        task: MessageTask,
+        schedule_run_id: str,
+        feeds_per_allocation: int = 1
+    ) -> bool:
         """
         创建待认领的任务分配记录
-        
+
         新模式：网关只创建任务记录，不主动分配给节点
         子节点通过 claim_task_for_node 主动认领任务
-        
+
+        每个分配的任务中公众号ID不重复，支持多个子节点并行认领不同公众号
+
         参数:
             task: 消息任务对象
             schedule_run_id: 调度批次ID
-        
+            feeds_per_allocation: 每个任务分配包含的公众号数量，默认1个
+
         返回:
             是否成功创建任务记录
         """
         print_info(f"开始创建任务记录: {task.name}")
-        
+
         # 获取任务关联的公众号
         session = DB.get_session()
         try:
             mps_list = json.loads(task.mps_id) if task.mps_id else []
             feed_ids = [mp["id"] for mp in mps_list]
-            
+
             feeds = session.query(Feed).filter(Feed.id.in_(feed_ids)).all()
-            
+
             if not feeds:
                 print_warning(f"任务 {task.name} 没有关联公众号")
                 return False
-            
+
             print_info(f"任务 {task.name} 包含 {len(feeds)} 个公众号")
-            
-            # 创建待认领的任务分配记录
-            allocation = self.create_pending_allocation(task, feeds, schedule_run_id)
-            
-            if allocation:
-                print_success(f"任务记录创建完成: {len(feeds)}个公众号等待子节点认领")
-                # 通知在线子节点有新任务
-                self.notify_children_new_task(allocation.id, len(feeds))
+
+            # 将公众号分散到多个任务分配中，确保每个分配的公众号ID不重复
+            allocations = []
+            total_feeds = len(feeds)
+            created_count = 0
+
+            for i in range(0, total_feeds, feeds_per_allocation):
+                batch_feeds = feeds[i:i + feeds_per_allocation]
+
+                # 创建待认领的任务分配记录，每个分配包含不重复的公众号
+                allocation = self.create_pending_allocation(task, batch_feeds, schedule_run_id)
+
+                if allocation:
+                    allocations.append(allocation)
+                    created_count += len(batch_feeds)
+                    print_info(f"创建任务分配 [{i//feeds_per_allocation + 1}]: {len(batch_feeds)} 个公众号")
+
+            if allocations:
+                print_success(f"任务记录创建完成: {created_count} 个公众号分散到 {len(allocations)} 个任务分配等待子节点认领")
+                # 通知在线子节点有新任务（通知第一个分配，子节点会继续认领其他分配）
+                self.notify_children_new_task(allocations[0].id, total_feeds)
                 return True
             else:
                 print_warning(f"任务 {task.name} 记录创建失败")
                 return False
-            
+
         except Exception as e:
             print_error(f"创建任务记录失败: {str(e)}")
             return False
@@ -611,7 +633,7 @@ class CascadeTaskDispatcher:
     async def execute_dispatch(self, task_id: str = None):
         """
         执行任务分发（立即触发，用于手动分发）
-        
+
         参数:
             task_id: 任务ID，None则分发所有启用任务
         """
@@ -619,25 +641,25 @@ class CascadeTaskDispatcher:
         try:
             # 生成调度批次ID
             schedule_run_id = str(uuid.uuid4())
-            
-            # 获取任务
-            query = session.query(MessageTask).filter(MessageTask.status == 0)
+
+            # 获取任务 (status=1 表示启用状态)
+            query = session.query(MessageTask).filter(MessageTask.status == 1)
             if task_id:
                 query = query.filter(MessageTask.id == task_id)
-            
+
             tasks = query.all()
-            
+
             print_info(f"开始分发 {len(tasks)} 个任务 (批次: {schedule_run_id})")
-            
+
             for task in tasks:
                 # 分发任务
                 allocations = self.dispatch_task_to_children(task, schedule_run_id)
-            
+
             # 清理超时任务
             self.cleanup_timeout_allocations()
-            
+
             print_success("所有任务分发完成")
-            
+
         except Exception as e:
             print_error(f"执行分发失败: {str(e)}")
 
@@ -730,11 +752,14 @@ class CascadeScheduleService:
         if self.scheduler:
             self.scheduler.clear_all_jobs()
         print_info("级联定时调度服务已停止")
-    
+
     def reload(self):
         """重载调度任务"""
-        if self.scheduler:
-            self.scheduler.clear_all_jobs()
+        if self.scheduler is None:
+            self.start()
+            print_success("级联定时调度任务已重载")
+            return
+        self.scheduler.clear_all_jobs()
         self._load_scheduled_tasks()
         print_success("级联定时调度任务已重载")
 

@@ -747,7 +747,8 @@ async def upload_articles(
                     status=article_data.get("status", 1),
                     publish_time=article_data.get("publish_time"),
                     created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
+                    updated_at=datetime.utcnow(),
+                    updated_at_millis=int(datetime.utcnow().timestamp() * 1000)
                 )
                 session.add(article)
                 new_count += 1
@@ -757,6 +758,7 @@ async def upload_articles(
                 existing.content = article_data.get("content", existing.content)
                 existing.content_markdown = article_data.get("content_markdown", existing.content_markdown)
                 existing.updated_at = datetime.utcnow()
+                existing.updated_at_millis = int(datetime.utcnow().timestamp() * 1000)
         
         # 更新分配记录的文章统计
         allocation.article_count = len(req.articles)
@@ -841,19 +843,19 @@ async def dispatch_tasks(
 ):
     """
     手动触发任务分发（父节点使用）
-    
+
     将任务分配给各个在线的子节点
     """
     from jobs.cascade_task_dispatcher import cascade_task_dispatcher
     from core.models.cascade_task_allocation import CascadeTaskAllocation
-    
+
     try:
         # 刷新节点状态
         online_count = cascade_task_dispatcher.refresh_node_statuses()
-        
-        # 检查任务数量
+
+        # 检查任务数量 (status=1 表示启用状态)
         session = DB.get_session()
-        query = session.query(MessageTask).filter(MessageTask.status == 0)
+        query = session.query(MessageTask).filter(MessageTask.status == 1)
         if task_id:
             query = query.filter(MessageTask.id == task_id)
         tasks = query.all()

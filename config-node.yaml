@@ -22,7 +22,7 @@ server:
 #PostgreSQL 连接示例: postgresql://<username>:<password>@<host>/<database>
 #需要注意数据库连接字符串的格式，如果是sqlite数据库，则使用sqlite:///路径的形式，如果是mysql数据库，
 #则使用mysql+pymysql://<username>:<password>@<host>/<database>?charset=<数据库编码>的形式
-db: ${DB:-sqlite:///data/db2.db}
+db: ${DB:-sqlite:///data/db3.db}
 #Redis 连接配置，用于缓存 Token 等数据，可选配置
 #格式: redis://[:password@]host:port/db 或 rediss://[:password@]host:port/db (SSL)
 #例如: redis://localhost:6379/0 或 redis://:password@redis.example.com:6379/1
@@ -156,3 +156,5 @@ cascade:
   api_secret: ${CASCADE_API_SECRET:-CSWAKhQc-LvCxOow5Iu_e3Sqoyk3Ps1PeI}
   sync_interval: ${CASCADE_SYNC_INTERVAL:-300}
   heartbeat_interval: ${CASCADE_HEARTBEAT_INTERVAL:-60}
+  # 子节点任务拉取间隔（秒），默认30秒
+  task_poll_interval: ${CASCADE_TASK_POLL_INTERVAL:-30}

@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 import os
 from datetime import datetime
 from core.config import cfg
+from core.redis_client import record_env_exception
 
 class WXArticleFetcher:
     """微信公众号文章获取器
@@ -254,15 +255,17 @@ class WXArticleFetcher:
                 "biz": "",
                 }
             }
-        self.controller.start_browser()
-       
-        self.page = self.controller.page
-        print_warning(f"Get:{url} Wait:{self.wait_timeout}")
-        self.controller.open_url(url)
-        page = self.page
-        content=""
-        
         try:
+            self.controller.start_browser()
+        
+            self.page = self.controller.page
+            if cfg.get("proxy.deno_url","")!="" and cfg.get("proxy.enabled",False):
+                url=cfg.get("proxy.deno_url")+"/fetch?url="+url
+            print_warning(f"Get:{url} Wait:{self.wait_timeout}")
+            self.controller.open_url(url)
+            page = self.page
+            content=""
+            
             # 等待页面加载
             # page.wait_for_load_state("networkidle")
             # body = page.evaluate('() => document.body.innerText')
@@ -271,10 +274,17 @@ class WXArticleFetcher:
             info["content"]=body
             if "当前环境异常，完成验证后即可继续访问" in body:
                 info["content"]=""
-                # try:
-                #     page.locator("#js_verify").click()
-                # except:
-                self.controller.cleanup()
+                # 记录环境异常统计到Redis
+                try:
+                    record_env_exception(
+                        url=url,
+                        mp_name="",
+                        mp_id=""
+                    )
+                    print_warning(f"已记录环境异常统计: {url}")
+                except Exception as e:
+                    print_error(f"记录环境异常统计失败: {e}")
+                
                 Wait(tips="当前环境异常，完成验证后即可继续访问")
                 raise Exception("当前环境异常，完成验证后即可继续访问")
             if "该内容已被发布者删除" in body or "The content has been deleted by the author." in body:
@@ -351,12 +361,14 @@ class WXArticleFetcher:
 
         except Exception as e:
             print_error(f"文章内容获取失败: {str(e)}")
-            print_warning(f"页面内容预览: {locals().get('body', '')[:50]}...")
+            body_preview = body[:50] if 'body' in dir() else "N/A"
+            print_warning(f"页面内容预览: {body_preview}...")
             # 记录详细错误信息但继续执行：正文获取失败时仍尝试获取 mp_info
             # info["content"] 为空时，下方 if 会跳过 mp_info 逻辑，避免访问已关闭的页面（如环境异常）
 
         try:
-            if info["content"] and info["content"]!="DELETED":
+            if info["content"]!="DELETED" and hasattr(self, 'page') and self.page:
+                page = self.page
                 # 等待关键元素加载
                 # 使用更精确的选择器避免匹配多个元素
                 ele_logo = page.locator('#js_like_profile_bar .wx_follow_avatar img')
@@ -375,7 +387,9 @@ class WXArticleFetcher:
         except Exception as e:
             print_error(f"获取公众号信息失败: {str(e)}")   
             pass
-        self.Close()
+        finally:
+            # 确保浏览器资源被正确释放
+            self.Close()
         return info
     def Close(self):
         """关闭浏览器"""
@@ -474,7 +488,7 @@ class WXArticleFetcher:
         return content
    
     def clean_article_content(self,html_content: str):
-        from tools.html import htmltools
+        from tools.htmltools import htmltools
         html_content=self.fix_images(html_content)
         if not cfg.get("gather.clean_html",False):
             return html_content

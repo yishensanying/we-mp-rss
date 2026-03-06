@@ -1,4 +1,5 @@
 import threading
+from sqlalchemy import func
 from core import lax, thread
 from core.models import Article,Feed,DATA_STATUS
 from core.db import DB
@@ -18,8 +19,8 @@ class ArticleInfo():
 def laxArticle():
     info=ArticleInfo()
     session=DB.get_session()
-    #获取没有内容的文章数量 - 只查询content字段
-    info.no_content_count=session.query(Article).filter(Article.content.is_(None)).count()
+    # 获取没有内容的文章数量；用 length(content)==0 判断空内容，避免 Oracle CLOB 与 '' 比较触发的 ORA-00932
+    info.no_content_count=session.query(Article).filter((Article.content == None) | (func.length(Article.content) == 0)).count()
     #所有文章数量 - 只查询id字段
     info.all_count=session.query(Article.id).count()
     #有内容的文章数量
@@ -48,7 +49,7 @@ def refresh_article_info():
 def get_article_info():
     """从缓存获取文章信息，如果缓存不存在则返回全局变量"""
     # 先尝试从缓存获取
-    cached_info = data_cache.get("article_info", ttl=1800)  # 30分钟TTL
+    cached_info = data_cache.get("article_info", ttl=60)  # 1分钟TTL
     ARTICLE_INFO=cached_info
     if cached_info is not None:
         return cached_info

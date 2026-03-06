@@ -6,7 +6,7 @@ from core.models import Feed
 from core.db import DB
 from core.models.feed import Feed
 from .cfg import cfg,wx_cfg
-from core.print import print_error,print_info, print_warning
+from core.print import print_error,print_info, print_warning, print_success
 from core.rss import RSS
 from driver.success import setStatus
 from driver.wxarticle import Web
@@ -89,6 +89,56 @@ class WxGather:
             "Cookie":self.cookies,
             "User-Agent": user_agent
         }
+        # 加载代理配置
+        self.proxy_enabled = cfg.get('proxy.enabled', False)
+        self.deno_proxy_url = cfg.get('proxy.deno_url', '')
+        self.http_proxy_url = cfg.get('proxy.http_url', '')
+        
+    def _get_proxies(self):
+        """获取代理配置"""
+        if not self.proxy_enabled:
+            return None
+        if self.http_proxy_url:
+            return {
+                "http": self.http_proxy_url,
+                "https": self.http_proxy_url
+            }
+        return None
+    
+    def _proxy_request(self, url: str) -> str:
+        """通过代理请求URL内容
+        
+        Args:
+            url: 目标URL
+            
+        Returns:
+            响应内容
+        """
+        import urllib.parse
+        
+        # 如果启用了Deno Deploy代理
+        if self.proxy_enabled and self.deno_proxy_url:
+            proxy_url = f"{self.deno_proxy_url}?url={urllib.parse.quote(url, safe='')}"
+            print_info(f"使用Deno代理请求: {proxy_url}")
+            try:
+                response = self.session.get(proxy_url, headers=self.headers, timeout=(10, 30))
+                if response.status_code == 200:
+                    return response.text
+                else:
+                    print_warning(f"Deno代理请求失败: {response.status_code}")
+            except Exception as e:
+                print_error(f"Deno代理请求异常: {e}")
+        
+        # 使用HTTP代理或直连
+        proxies = self._get_proxies()
+        try:
+            response = self.session.get(url, headers=self.headers, proxies=proxies, timeout=(10, 30))
+            if response.status_code == 200:
+                return response.text
+        except Exception as e:
+            print_error(f"请求失败: {e}")
+        
+        return ""
     def fix_header(self,url):
          user_agent = random.choice(USER_AGENTS)
           # 更新请求头
@@ -108,7 +158,17 @@ class WxGather:
             session=self.session
             # 更新请求头
             headers = self.fix_header(url)
-            r = session.get(url, headers=headers)
+            
+            # 优先使用代理
+            if self.proxy_enabled and self.deno_proxy_url:
+                text = self._proxy_request(url)
+                if text:
+                    text = self.remove_common_html_elements(text)
+                    return text
+            
+            # 使用HTTP代理或直连
+            proxies = self._get_proxies()
+            r = session.get(url, headers=headers, proxies=proxies)
             if r.status_code == 200:
                 text = r.text
                 text=self.remove_common_html_elements(text)
@@ -163,10 +223,12 @@ class WxGather:
             return
         data={}
         try:
+            proxies = self._get_proxies()
             response = requests.get(
             url,
             params=params,
             headers=headers,
+            proxies=proxies,
             )
             response.raise_for_status()  # 检查状态码是否为200
             data = response.text  # 解析JSON数据

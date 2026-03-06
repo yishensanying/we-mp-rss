@@ -53,6 +53,12 @@
         </template>
         级联管理
       </a-menu-item>
+      <a-menu-item key="/env-exception">
+        <template #icon>
+          <icon-exclamation-circle />
+        </template>
+        异常统计
+      </a-menu-item>
        <!-- <a-menu-item key="/reader">
         <template #icon>
           <icon-read />

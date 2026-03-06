@@ -163,6 +163,15 @@ const routes = [
           permissions: ['admin'] 
         }
       },
+      {
+        path: 'env-exception',
+        name: 'EnvExceptionStats',
+        component: () => import('@/views/EnvExceptionStats.vue'),
+        meta: { 
+          requiresAuth: true,
+          permissions: ['admin'] 
+        }
+      },
     ]
   },
   {

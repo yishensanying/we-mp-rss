@@ -430,33 +430,37 @@ class CascadeSyncService:
         print_success("完整同步完成")
     
     async def start_periodic_sync(self):
-        """启动定期同步和任务认领"""
+        """启动定期同步服务（心跳和数据同步）
+
+        注意：任务拉取由独立的 start_child_task_worker 负责
+        """
         if not self.sync_enabled or self.running:
             return
-        
+
         self.running = True
-        print_info(f"启动定期同步服务，同步间隔: {self.sync_interval}秒，任务认领间隔: {self.claim_interval}秒")
-        
+        print_info(f"启动定期同步服务，同步间隔: {self.sync_interval}秒")
+
         sync_counter = 0
-        
+
         try:
             while self.running:
                 try:
-                    # 每次循环都尝试认领任务
-                    await self.claim_and_execute_task()
-                    
-                    # 每隔 sync_interval 秒执行一次完整同步
+                    # 每隔 sync_interval 秒执行一次完整同步（包括心跳）
                     if sync_counter >= self.sync_interval:
                         await self.full_sync()
                         sync_counter = 0
-                    
+                    else:
+                        # 非同步周期，只发送心跳
+                        await self.send_heartbeat()
+
                 except Exception as e:
                     print_error(f"定期同步出错: {str(e)}")
-                
-                # 等待下次任务认领
-                await asyncio.sleep(int(self.claim_interval))
-                sync_counter += self.claim_interval
-                
+
+                # 等待下次心跳
+                heartbeat_interval = min(60, self.sync_interval // 5) if self.sync_interval > 60 else 60
+                await asyncio.sleep(heartbeat_interval)
+                sync_counter += heartbeat_interval
+
         except asyncio.CancelledError:
             print_info("定期同步服务已停止")
     

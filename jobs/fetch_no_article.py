@@ -11,52 +11,72 @@ DB=db.Db(tag="内容修正")
 def fetch_articles_without_content():
     """
     查询content为空的文章，调用微信内容提取方法获取内容并更新数据库
+    使用 FETCHING 状态锁定，防止多节点同时获取相同数据
     """
     session = DB.get_session()
     ga=WxGather().Model()
     try:
-        # 查询content为空的文章（使用 func.length 兼容 Oracle CLOB）
+        # 查询content为空且未被锁定的文章
+        # 使用 length(content)==0 判断空内容，避免 Oracle CLOB 与 '' 比较触发的 ORA-00932
         from sqlalchemy import or_, func
         articles = session.query(Article).filter(
-            or_(Article.content.is_(None), func.length(Article.content) == 0)
+            or_(Article.content.is_(None), func.length(Article.content) == 0),
+            Article.status != DATA_STATUS.FETCHING  # 排除正在获取的文章
         ).limit(10).all()
         
         if not articles:
             print_warning("暂无需要获取内容的文章")
             return
         
+        # 锁定文章状态，防止其他节点获取
+        article_ids = [a.id for a in articles]
+        session.query(Article).filter(Article.id.in_(article_ids)).update(
+            {Article.status: DATA_STATUS.FETCHING},
+            synchronize_session=False
+        )
+        session.commit()
+        
         for article in articles:
-            # 构建URL
-            if article.url:
-                url = article.url
-            else:
-                url = f"https://mp.weixin.qq.com/s/{article.id}"
-            
-            print(f"正在处理文章: {article.title}, URL: {url}")
-            
-            # 获取内容
-            if cfg.get("gather.content_mode","web"):
-                content=Web.get_article_content(url).get("content")
-            else:
-                content = ga.content_extract(url)
-            if content:
-                # 更新内容
-                article.content = content
-                html, md = fix_content(content)
-                article.content_html = html
-                article.content_markdown = md
-                if  content=="DELETED":
-                    print_error(f"获取文章 {article.title} 内容已被发布者删除")
-                    article.status = DATA_STATUS.DELETED
+            try:
+                # 构建URL
+                if article.url:
+                    url = article.url
+                else:
+                    url = f"https://mp.weixin.qq.com/s/{article.id}"
+                
+                print(f"正在处理文章: {article.title}, URL: {url}")
+                
+                # 获取内容
+                if cfg.get("gather.content_mode","web"):
+                    content=Web.get_article_content(url).get("content")
+                else:
+                    content = ga.content_extract(url)
+                if content:
+                    # 更新内容
+                    article.content = content
+                    html, md = fix_content(content)
+                    article.content_html = html
+                    article.content_markdown = md
+                    if  content=="DELETED":
+                        print_error(f"获取文章 {article.title} 内容已被发布者删除")
+                        article.status = DATA_STATUS.DELETED
+                    else:
+                        article.status = DATA_STATUS.ACTIVE  # 恢复正常状态
+                    session.commit()
+                    print_success(f"成功更新文章 {article.title} 的内容")
+                else:
+                    # 获取失败，恢复状态以便后续重试
+                    article.status = DATA_STATUS.ACTIVE
+                    session.commit()
+                    print_error(f"获取文章 {article.title} 内容失败")
+                Wait(min=5,max=10,tips=f"修正 {article.title}... 完成")
+            except Exception as e:
+                # 单篇文章处理失败，恢复状态
+                article.status = DATA_STATUS.ACTIVE
                 session.commit()
-                print_success(f"成功更新文章 {article.title} 的内容")
-            else:
-                print_error(f"获取文章 {article.title} 内容失败")
-            Wait(min=5,max=10,tips=f"修正 {article.title}... 完成")   
+                print_error(f"处理文章 {article.title} 时发生错误: {e}")
     except Exception as e:
         print(f"处理过程中发生错误: {e}")
-    finally:
-        Web.Close()
 from core.task import TaskScheduler
 from core.queue import TaskQueueManager
 scheduler=TaskScheduler()
