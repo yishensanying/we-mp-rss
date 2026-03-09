@@ -12,6 +12,7 @@ CREATE TABLE we_articles (
     pic_url         VARCHAR2(500 CHAR),
     url             VARCHAR2(500 CHAR),
     description     CLOB,
+    extinfo         CLOB,
     content         CLOB,
     content_html    CLOB,
     content_markdown CLOB,
