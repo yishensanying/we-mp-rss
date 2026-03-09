@@ -19,7 +19,7 @@ def CallBackNotice(data=None,ext_data=None):
         url=rss_domain+str(img_path)
         url=image_to_base64("./static/wx_qrcode.png")
         text=f"- 服务名：{cfg.get('server.name','')}\n"
-        text+=f"- 发送时间： {time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(time.time()))}"
+        text+=f"- 发送时间： {time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(time.time()))}\n"
         if WX_API.GetHasCode():
             text+=f"![描述]({url})"
             # text+=f"<img src='{url}' width='100' height='100'/>"
