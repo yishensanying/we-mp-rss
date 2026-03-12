@@ -9,7 +9,6 @@ from views.base import process_content_images, _render_template_with_error
 from core.db import DB
 from core.models.article import Article
 from core.models.feed import Feed
-from core.models.tags import Tags
 from apis.base import format_search_kw
 from core.lax.template_parser import TemplateParser
 from views.config import base

@@ -7,17 +7,16 @@ from core.models.feed import Feed
 from core.models.article import Article
 from driver.wxarticle import Web
 from datetime import datetime
-from core.models.tags import Tags
-import json
-#获取公众号视图数据
+
+
 def get_mps_view(
-    page: int ,
-    limit: int 
-): 
+    page: int,
+    limit: int
+):
     session = DB.get_session()
     data={}
     try:
-        # 查询标签总数
+        # 查询公众号总数
         total = session.query(Feed).filter(Feed.status == 1).count()
         
         # 计算偏移量
@@ -59,7 +58,6 @@ def get_mps_view(
         breadcrumb = [
             {"name": "公众号", "url": "/views/mps"}
         ]
-        # 使用模板引擎渲染
         data={
             "feeds": feed_list,
             "current_page": page,
@@ -76,89 +74,6 @@ def get_mps_view(
         session.close()
     return data
 
-
-
-#显示所有标签，支持分页
-def get_tags_view(
-    page: int ,
-    limit: int 
-):
-    """
-    显示所有标签，支持分页
-    """
-    session = DB.get_session()
-    data={}
-    try:
-        # 查询标签总数
-        total = session.query(Tags).filter(Tags.status == 1).count()
-        
-        # 计算偏移量
-        offset = (page - 1) * limit
-        
-        # 查询标签列表
-        tags = session.query(Tags).filter(Tags.status == 1).order_by(Tags.created_at.desc()).offset(offset).limit(limit).all()
-        
-        # 处理标签数据
-        tag_list = []
-        for tag in tags:
-            # 解析mps_id JSON
-            mps_ids = []
-            if tag.mps_id:
-                try:
-                    mps_data = json.loads(tag.mps_id)
-                    mps_ids = [str(mp['id']) for mp in mps_data] if isinstance(mps_data, list) else []
-                except (json.JSONDecodeError, TypeError):
-                    mps_ids = []
-            
-            # 统计文章数量
-            article_count = 0
-            if mps_ids:
-                article_count = session.query(Article).filter(
-                    Article.mp_id.in_(mps_ids),
-                    Article.status == 1
-                ).count()
-            
-            # 获取关联的公众号数量
-            mp_count = len(mps_ids) if mps_ids else 0
-            
-            tag_data = {
-                "id": tag.id,
-                "name": tag.name,
-                "cover": Web.get_image_url(tag.cover) if tag.cover else "",
-                "intro": tag.intro,
-                "mp_count": mp_count,
-                "article_count": article_count,
-                "sync_time": datetime.fromtimestamp(tag.sync_time).strftime('%Y-%m-%d %H:%M') if tag.sync_time else "未同步",
-                "created_at": tag.created_at.strftime('%Y-%m-%d') if tag.created_at else ""
-            }
-            tag_list.append(tag_data)
-        
-        # 计算分页信息
-        total_pages = (total + limit - 1) // limit
-        has_prev = page > 1
-        has_next = page < total_pages
-        
-        # 构建面包屑
-        breadcrumb = [
-            {"name": "首页", "url": "/views/home"}
-        ]
-        
-        data={
-            "tags": tag_list,
-            "current_page": page,
-            "total_pages": total_pages,
-            "total_items": total,
-            "limit": limit,
-            "has_prev": has_prev,
-            "has_next": has_next,
-        }
-        
-        
-    except Exception as e:
-        print(f"获取首页数据错误: {str(e)}")
-    finally:
-        session.close()
-    return data
 
 def _render_template_with_error(template_path: str, error_msg: str, breadcrumb: list) -> HTMLResponse:
     """渲染错误页面的辅助函数"""

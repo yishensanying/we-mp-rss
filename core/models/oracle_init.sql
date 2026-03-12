@@ -11,6 +11,7 @@ CREATE TABLE we_articles (
     title           VARCHAR2(1000 CHAR),
     pic_url         VARCHAR2(500 CHAR),
     url             VARCHAR2(500 CHAR),
+    album           VARCHAR2(255 CHAR),
     description     CLOB,
     extinfo         CLOB,
     content         CLOB,
@@ -102,106 +103,6 @@ CREATE TABLE we_message_tasks (
     updated_at      TIMESTAMP,
     CONSTRAINT pk_we_message_tasks PRIMARY KEY (id)
 );
-
--- 6. we_message_tasks_logs 消息任务日志表
-CREATE TABLE we_message_tasks_logs (
-    id              VARCHAR2(255 CHAR)  NOT NULL,
-    task_id         VARCHAR2(255 CHAR)  NOT NULL,
-    mps_id          VARCHAR2(255 CHAR)  NOT NULL,
-    update_count    NUMBER(10)          DEFAULT 0,
-    log             CLOB,
-    status          NUMBER(10)          DEFAULT 0,
-    created_at      TIMESTAMP,
-    updated_at      TIMESTAMP,
-    CONSTRAINT pk_we_msg_tasks_logs PRIMARY KEY (id)
-);
-
--- 7. we_config_management 配置管理表
-CREATE TABLE we_config_management (
-    config_key      VARCHAR2(100 CHAR)  NOT NULL,
-    config_value    CLOB                NOT NULL,
-    description     VARCHAR2(200 CHAR),
-    CONSTRAINT pk_we_config_mgmt PRIMARY KEY (config_key)
-);
-
--- 8. we_tags 标签表
-CREATE TABLE we_tags (
-    id              VARCHAR2(255 CHAR)  NOT NULL,
-    name            VARCHAR2(255 CHAR),
-    cover           VARCHAR2(255 CHAR),
-    intro           VARCHAR2(255 CHAR),
-    status          NUMBER(10),
-    mps_id          CLOB                NOT NULL,
-    sync_time       NUMBER(10),
-    update_time     NUMBER(10),
-    created_at      TIMESTAMP,
-    updated_at      TIMESTAMP,
-    CONSTRAINT pk_we_tags PRIMARY KEY (id)
-);
-
--- 9. we_cascade_nodes 级联节点表
-CREATE TABLE we_cascade_nodes (
-    id              VARCHAR2(255 CHAR)  NOT NULL,
-    node_type       NUMBER(10)          DEFAULT 0 NOT NULL,
-    name            VARCHAR2(255 CHAR)  NOT NULL,
-    description     CLOB,
-    api_url         VARCHAR2(500 CHAR),
-    callback_url    VARCHAR2(500 CHAR),
-    api_key         VARCHAR2(100 CHAR),
-    api_secret_hash VARCHAR2(64 CHAR),
-    parent_id       VARCHAR2(255 CHAR),
-    status          NUMBER(10)          DEFAULT 0,
-    sync_config     CLOB                DEFAULT '{}',
-    last_sync_at    TIMESTAMP,
-    last_heartbeat_at TIMESTAMP,
-    is_active       NUMBER(1)           DEFAULT 1,
-    created_at      TIMESTAMP,
-    updated_at      TIMESTAMP,
-    CONSTRAINT pk_we_cascade_nodes PRIMARY KEY (id)
-);
-
--- 10. we_cascade_sync_logs 级联同步日志表
-CREATE TABLE we_cascade_sync_logs (
-    id              VARCHAR2(255 CHAR)  NOT NULL,
-    node_id         VARCHAR2(255 CHAR)  NOT NULL,
-    operation       VARCHAR2(50 CHAR)   NOT NULL,
-    direction       VARCHAR2(20 CHAR)   NOT NULL,
-    status          NUMBER(10)          DEFAULT 0,
-    data_count      NUMBER(10)          DEFAULT 0,
-    error_message   CLOB,
-    extra_data      CLOB                DEFAULT '{}',
-    started_at      TIMESTAMP,
-    completed_at    TIMESTAMP,
-    CONSTRAINT pk_we_cascade_sync_logs PRIMARY KEY (id)
-);
-
--- 11. we_cascade_task_allocations 级联任务分配表
-CREATE TABLE we_cascade_task_allocations (
-    id              VARCHAR2(255 CHAR)  NOT NULL,
-    task_id         VARCHAR2(255 CHAR)  NOT NULL,
-    task_name       VARCHAR2(255 CHAR),
-    cron_exp        VARCHAR2(100 CHAR),
-    node_id         VARCHAR2(255 CHAR),
-    feed_ids        CLOB                NOT NULL,
-    status          VARCHAR2(20 CHAR)   DEFAULT 'pending',
-    result_summary  CLOB,
-    error_message   CLOB,
-    dispatched_at   TIMESTAMP,
-    claimed_at      TIMESTAMP,
-    started_at      TIMESTAMP,
-    completed_at    TIMESTAMP,
-    schedule_run_id VARCHAR2(255 CHAR),
-    article_count   NUMBER(10)          DEFAULT 0,
-    new_article_count NUMBER(10)        DEFAULT 0,
-    created_at      TIMESTAMP,
-    updated_at      TIMESTAMP,
-    CONSTRAINT pk_we_cascade_ta PRIMARY KEY (id)
-);
-
-CREATE INDEX ix_we_cascade_ta_task_id ON we_cascade_task_allocations (task_id);
-CREATE INDEX ix_we_cascade_ta_node_id ON we_cascade_task_allocations (node_id);
-CREATE INDEX ix_we_cascade_ta_status ON we_cascade_task_allocations (status);
-CREATE INDEX ix_we_cascade_ta_run_id ON we_cascade_task_allocations (schedule_run_id);
 
 -- ============================================================
 -- 12. 初始化管理员用户

@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Request, Depends, Query, HTTPException
 from fastapi.responses import HTMLResponse
 from typing import Optional
-from apis.tags import get_tags
 from core.lax.template_parser import TemplateParser
 from views.config import base
 from core.cache import cache_view, clear_cache_pattern
-from views.base import get_tags_view,get_mps_view
+from views.base import get_mps_view
 # 创建路由器
 router = APIRouter(tags=["首页"])
 
@@ -16,11 +15,12 @@ async def home_view(
     page: int = Query(1, ge=1, description="页码"),
     limit: int = Query(12, ge=1, le=50, description="每页数量")
 ):
-    """
-    首页显示所有标签，支持分页
-    """
+    """首页显示公众号列表"""
     try:
-        data={"site": base.site,"tags":get_tags_view(page, limit),"mps":get_mps_view(page, limit)}
+        data = {
+            "site": base.site,
+            "mps": get_mps_view(page, limit),
+        }
         # 读取模板文件
         template_path = base.home_template
         with open(template_path, 'r', encoding='utf-8') as f:

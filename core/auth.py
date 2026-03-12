@@ -6,15 +6,14 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional
 from core.models import User as DBUser
-from core.config import  cfg,API_BASE
+from core.config import cfg, API_BASE
 from sqlalchemy.orm import Session
 from core.models import User, AccessKey
-import core.db  as db
+import core.db as db
 from passlib.context import CryptContext
 import json
 import secrets
 import hashlib
-from core.models.cascade_node import CascadeNode
 
 DB=db.Db(tag="用户连接")
 SECRET_KEY = cfg.get("secret","csol2025")  # 生产环境应使用更安全的密钥
@@ -359,35 +358,24 @@ def authenticate_ak(access_key: str, secret_key: str) -> Optional[dict]:
 
 async def get_current_user_or_ak(request: Request, token: str = Depends(oauth2_scheme)):
     """
-    通用认证函数，支持 JWT Token、AK/SK 认证和级联节点认证
+    通用认证函数，支持 JWT Token 与用户 AK/SK 认证。
     
     优先级:
-    1. Authorization 头中的 AK/SK (格式: "AK-SK ak_value:sk_value") - 用户AK或级联节点AK
+    1. Authorization 头中的 AK/SK (格式: "AK-SK ak_value:sk_value") - 用户 AK
     2. Bearer Token (JWT)
     """
-    # 检查 AK/SK 认证
+    # 优先尝试 AK/SK 认证
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("AK-SK "):
         try:
             credentials = auth_header[6:].strip()
-            if ':' in credentials:
-                ak, sk = credentials.split(':', 1)
-                
-                # 1. 尝试级联节点认证
-                node = authenticate_cascade_node(ak, sk)
-                if node:
-                    return {
-                        "username": f"node_{node['name']}",
-                        "node_id": node['id'],
-                        "role": "cascade_node",
-                        "auth_type": "cascade_node"
-                    }
-                
-                # 2. 尝试用户AK认证
+            if ":" in credentials:
+                ak, sk = credentials.split(":", 1)
                 user_info = authenticate_ak(ak, sk)
                 if user_info:
                     return user_info
-        except:
+        except Exception:
+            # AK 解析失败时退回到 JWT 逻辑
             pass
     
     # 回退到 JWT Token 认证
@@ -414,7 +402,7 @@ async def get_current_user_or_ak(request: Request, token: str = Depends(oauth2_s
         "role": user.role,
         "permissions": user.permissions,
         "original_user": user,
-        "auth_type": "jwt"  # 标记为 JWT 认证
+        "auth_type": "jwt",
     }
 
 
@@ -523,58 +511,4 @@ def update_ak(ak_id: str, **kwargs) -> bool:
         session.close()
 
 
-def authenticate_cascade_node(api_key: str, secret_key: str) -> Optional[dict]:
-    """
-    验证级联节点 AK/SK 凭证
-    
-    参数:
-        api_key: 级联节点的 API Key
-        secret_key: 级联节点的 Secret Key
-    
-    返回: 级联节点信息字典或 None
-    """
-    from core.print import print_info, print_error
-    session = DB.get_session()
-    try:
-        secret_hash = hashlib.sha256(secret_key.encode()).hexdigest()
-        
-        print_info(f"[级联认证] AK: {api_key}")
-        print_info(f"[级联认证] SK Hash: {secret_hash}")
-        
-        node = session.query(CascadeNode).filter(
-            CascadeNode.api_key == api_key,
-            CascadeNode.api_secret_hash == secret_hash,
-            CascadeNode.is_active == True
-        ).first()
-        
-        if node:
-            print_info(f"[级联认证] 找到节点: {node.name}")
-            # 更新最后心跳时间
-            node.last_heartbeat_at = datetime.utcnow()
-            session.commit()
-            
-            # 在 session 关闭前提取数据
-            return {
-                "id": node.id,
-                "name": node.name,
-                "node_type": node.node_type
-            }
-        else:
-            print_error(f"[级联认证] 未找到匹配节点")
-            # 调试：列出所有节点
-            all_nodes = session.query(CascadeNode).filter(
-                CascadeNode.api_key == api_key
-            ).all()
-            print_info(f"[级联认证] AK 匹配的节点数: {len(all_nodes)}")
-            for n in all_nodes:
-                print_info(f"[级联认证] 节点: {n.name}, active={n.is_active}, hash={n.api_secret_hash}")
-        
-        return None
-    except Exception as e:
-        from core.print import print_error
-        print_error(f"验证级联节点凭证错误: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return None
-    finally:
-        session.close()
+

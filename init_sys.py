@@ -1,45 +1,48 @@
 from core.models.user import User
-from core.models.article import Article
-from core.models.config_management import ConfigManagement
-from core.models.feed import Feed
-from core.models.message_task import MessageTask
-from core.models.cascade_node import CascadeNode, CascadeSyncLog
-from core.models.cascade_task_allocation import CascadeTaskAllocation
-from core.db import Db,DB
-from core.config import cfg
+from core.db import Db, DB
 from core.auth import pwd_context
-import time
 import os
-from core.print import print_info, print_error
+from core.print import print_info
+
+
 def init_user(_db: Db):
+    """
+    初始化默认管理员用户。
+    仅负责插入用户，不做建表或迁移，表结构需外部提前准备。
+    """
     try:
-      username,password=os.getenv("USERNAME", "admin"),os.getenv("PASSWORD", "admin@123")
-      session=_db.get_session()
-      session.add(User(
-          id="0",
-          username=username,
-          password_hash=pwd_context.hash(password),
-          ))
-      session.commit()
-      print_info(f"初始化用户成功,请使用以下凭据登录：{username}")
-    except Exception as e:
-        # print_error(f"Init error: {str(e)}")
-        pass
-def sync_models():
-     # 同步模型到表结构
-         from data_sync import DatabaseSynchronizer
-         DB.create_tables()
-         time.sleep(3)
-         synchronizer = DatabaseSynchronizer(db_url=cfg.get("db",""))
-         synchronizer.sync()
-         print_info("模型同步完成")
+        username = os.getenv("USERNAME", "admin")
+        password = os.getenv("PASSWORD", "admin@123")
+        session = _db.get_session()
 
-     
+        # 如果已存在用户 0 或同名用户，则不重复创建
+        existing = session.query(User).filter(
+            (User.id == "0") | (User.username == username)
+        ).first()
+        if existing:
+            return
 
- 
+        session.add(
+            User(
+                id="0",
+                username=username,
+                password_hash=pwd_context.hash(password),
+            )
+        )
+        session.commit()
+        print_info(f"初始化用户成功, 请使用以下凭据登录：{username}")
+    except Exception:
+        # 初始化失败时静默略过，避免影响其它流程
+        session.rollback()
+    finally:
+        session.close()
+
+
 def init():
-    sync_models()
+    """对外提供的初始化入口：仅创建默认用户。"""
     init_user(DB)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     init()
+

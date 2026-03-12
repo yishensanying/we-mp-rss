@@ -1,14 +1,4 @@
 {%include "includes/header.html" %}
-<div class="grid grid-6">
-    {% for tag in tags['tags'] %}
-    <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h3 style="text-align: center;width:100%;"><a href="/views/tag/{{tag.id}}">{{tag.name}}</a></h3>
-        </div>
-    </div>
-    {% endfor %}
-</div>
-
 <div class="grid grid-3">
     {% for feed in mps['feeds'] %}
     <div class="card">

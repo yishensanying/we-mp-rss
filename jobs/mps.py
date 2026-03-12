@@ -71,22 +71,7 @@ def do_job(mp=None,task:MessageTask=None,isTest=False):
         web_hook(tms, is_test=isTest)
         print_success(f"任务({task.id})[{mp.mp_name}]执行成功,{count}成功条数")
         
-        # 级联节点：上报任务执行结果到父节点
-        from jobs.cascade_sync import cascade_sync_service
-        if not isTest and mock_articles:
-            import asyncio
-            try:
-                result_data = [{
-                    "mp_id": mp.id,
-                    "mp_name": mp.mp_name,
-                    "article_count": len(mock_articles) if not isTest else 1,
-                    "success_count": count if not isTest else 1,
-                    "timestamp": datetime.now().isoformat()
-                }]
-                # 异步上报，不阻塞主流程
-                asyncio.create_task(cascade_sync_service.report_task_result(task.id, result_data))
-            except Exception as e:
-                print_error(f"上报任务结果失败: {str(e)}")
+        # 级联上报逻辑已移除
 
 from core.queue import TaskQueue
 def add_job(feeds:list[Feed]=None,task:MessageTask=None,isTest=False):

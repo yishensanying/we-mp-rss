@@ -11,47 +11,17 @@
         </template>
         订阅管理
       </a-menu-item>
-      <a-menu-item key="/export/records">
-        <template #icon>
-          <icon-export />
-        </template>
-        导出记录
-      </a-menu-item>
-      <a-menu-item key="/tags">
-        <template #icon>
-          <icon-tag />
-        </template>
-        标签管理
-      </a-menu-item>
       <a-menu-item key="/message-tasks">
         <template #icon>
           <icon-notification />
         </template>
         消息任务
       </a-menu-item>
-      <a-menu-item key="/configs">
-        <template #icon>
-          <icon-settings />
-        </template>
-        配置信息
-      </a-menu-item>
-      <a-menu-item key="/sys-info">
-        <template #icon>
-          <icon-info-circle />
-        </template>
-        系统信息
-      </a-menu-item>
       <a-menu-item key="/access-keys">
         <template #icon>
           <icon-key />
         </template>
         Access Key
-      </a-menu-item>
-      <a-menu-item key="/cascade">
-        <template #icon>
-          <icon-share-external />
-        </template>
-        级联管理
       </a-menu-item>
       <a-menu-item key="/env-exception">
         <template #icon>

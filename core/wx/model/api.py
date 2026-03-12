@@ -86,6 +86,12 @@ class MpsApi(WxGather):
                             item["content"] = ""
                         item["id"] = item["aid"]
                         item["mp_id"] = Mps_id
+                        album_infos = item.get("appmsg_album_infos")
+                        if album_infos and len(album_infos) > 0 and isinstance(album_infos[0], dict):
+                            title_val = album_infos[0].get("title")
+                            if title_val is not None and str(title_val).strip():
+                                item["album"] = (str(title_val).strip())
+
                         if CallBack is not None:
                             super().FillBack(CallBack=CallBack,data=item,Ext_Data={"mp_title":Mps_title,"mp_id":Mps_id})
                     print(f"第{i+1}页爬取成功\n")

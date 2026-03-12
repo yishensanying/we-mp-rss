@@ -7,19 +7,10 @@
         <a-card :bordered="false" title="公众号"
           :headStyle="{ padding: '12px 16px', borderBottom: '1px solid #eee', background: '#fff', zIndex: 1, border: 0 }">
           <template #extra>
-            <a-dropdown>
-              <a-button type="primary">
-                <template #icon><icon-plus /></template>
-                订阅
-                <icon-down />
-              </a-button>
-              <template #content>
-                <a-doption @click="showAddModal"><template #icon><icon-plus /></template>添加公众号</a-doption>
-                <a-doption @click="exportMPS"><template #icon><icon-export /></template>导出公众号</a-doption>
-                <a-doption @click="importMPS"><template #icon><icon-import /></template>导入公众号</a-doption>
-                <a-doption @click="exportOPML"><template #icon><icon-share-external /></template>导出OPML</a-doption>
-              </template>
-            </a-dropdown>
+          <a-button type="primary" @click="showAddModal">
+            <template #icon><icon-plus /></template>
+            添加订阅公众号
+          </a-button>
           </template>
           <div style="display: flex; flex-direction: column;; background: #fff">
             <div style="margin-bottom: 12px;">
@@ -83,11 +74,7 @@
                 style="margin: 0 8px;">
               </a-switch>
 
-              <a-button  @click="handleExportShow()">
-                <template #icon><icon-export /></template>
-                导出
-              </a-button>
-              <ExportModal ref="exportModal"  />
+              
               <a-button @click="refresh" v-if="activeFeed?.id != ''">
                 <template #icon><icon-refresh /></template>
                 刷新
@@ -113,32 +100,6 @@
                 <template #icon><icon-scan /></template>
                 刷新授权
               </a-button>
-              <a-dropdown>
-                <a-button>
-                  <template #icon>
-                    <IconWifi />
-                  </template>
-                  订阅
-                  <icon-down />
-                </a-button>
-                <template #content>
-                  <a-doption @click="rssFormat = 'atom'; openRssFeed()"><template #icon>
-                      <TextIcon text="atom" />
-                    </template>ATOM</a-doption>
-                  <a-doption @click="rssFormat = 'rss'; openRssFeed()"><template #icon>
-                      <TextIcon text="rss" />
-                    </template>RSS</a-doption>
-                  <a-doption @click="rssFormat = 'json'; openRssFeed()"><template #icon>
-                      <TextIcon text="json" />
-                    </template>JSON</a-doption>
-                  <a-doption @click="rssFormat = 'md'; openRssFeed()"><template #icon>
-                      <TextIcon text="md" />
-                    </template>Markdown</a-doption>
-                  <a-doption @click="rssFormat = 'txt'; openRssFeed()"><template #icon>
-                      <TextIcon text="txt" />
-                    </template>Text</a-doption>
-                </template>
-              </a-dropdown>
               <a-button type="primary" status="danger" @click="handleBatchDelete" :disabled="!selectedRowKeys.length">
                 <template #icon><icon-delete /></template>
                 批量删除
@@ -220,10 +181,9 @@ import { Avatar } from '@/utils/constants'
 import { translatePage, setCurrentLanguage } from '@/utils/translate';
 import { ref, onMounted, h, nextTick, watch, computed } from 'vue'
 import axios from 'axios'
-import { IconApps, IconAtt, IconDelete, IconEdit, IconEye, IconRefresh, IconScan, IconWeiboCircleFill, IconWifi, IconCode, IconCheck, IconClose, IconStop, IconPlayArrow, IconCopy, IconPlus, IconDown, IconExport, IconImport, IconShareExternal } from '@arco-design/web-vue/es/icon'
+import { IconApps, IconAtt, IconDelete, IconEdit, IconEye, IconRefresh, IconScan, IconWeiboCircleFill, IconCode, IconCheck, IconClose, IconStop, IconPlayArrow, IconCopy, IconPlus, IconDown } from '@arco-design/web-vue/es/icon'
 import { getArticles, deleteArticle as deleteArticleApi, ClearArticle, ClearDuplicateArticle, getArticleDetail, toggleArticleReadStatus } from '@/api/article'
-import { ExportOPML, ExportMPS, ImportMPS } from '@/api/export'
-import ExportModal from '@/components/ExportModal.vue'
+// 导出 / 导入相关 API 已移除
 import { getSubscriptions, UpdateMps, toggleMpStatus as toggleMpStatusApi } from '@/api/subscription'
 import { inject } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
@@ -238,7 +198,6 @@ const loading = ref(false)
 const mpList = ref([])
 const mpLoading = ref(false)
 const activeMpId = ref('')
-const exportModal = ref()
 const selectedRowKeys = ref([])
 const mpPagination = ref({
   current: 1,
@@ -372,7 +331,7 @@ const handleMpSearch = () => {
   mpPagination.value.current = 1
   fetchMpList()
 }
-const rssFormat = ref('atom')
+// RSS 订阅功能已移除
 const activeFeed = ref({
   id: "",
   name: "全部",
@@ -471,79 +430,7 @@ const handleAuthClick = () => {
   showAuthQrcode()
 }
 
-const exportOPML = async () => {
-  try {
-    const response = await ExportOPML();
-    const blob = new Blob([response], { type: 'application/xml' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'rss_feed.opml';
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-  } catch (error) {
-    console.error('导出OPML失败:', error);
-    Message.error(error?.message || '导出OPML失败');
-  }
-};
-const exportMPS = async () => {
-  try {
-    const res = await ExportMPS();
-    const data = (res as any).data ?? res;
-    const blob = data instanceof Blob
-      ? data
-      : new Blob([data], { type: 'text/csv;charset=utf-8' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = '公众号列表.csv';
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-  } catch (error: any) {
-    Message.error(error?.message || '导出公众号失败');
-  }
-};
-
-const importMPS = async () => {
-  try {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.csv';
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const formData = new FormData();
-      formData.append('file', file);
-      const response = await ImportMPS(formData);
-      Message.info(response?.message || "导入成功");
-    };
-    input.click();
-  } catch (error) {
-    Message.error(error?.message || '导入公众号失败');
-  }
-};
-
-const openRssFeed = () => {
-  const format = ['rss', 'atom', 'json', 'md', 'txt'].includes(rssFormat.value)
-    ? rssFormat.value
-    : 'atom'
-  let search = ""
-  if (searchText.value != "") {
-    search = "/search/" + searchText.value;
-  }
-  if (!activeMpId.value) {
-    window.open(`/feed${search}/all.${format}`, '_blank')
-    return
-  }
-  const activeMp = mpList.value.find(item => item.id === activeMpId.value)
-  if (activeMp) {
-    window.open(`/feed${search}/${activeMpId.value}.${format}`, '_blank')
-  }
-}
+// 导入 / 导出 / RSS 订阅相关逻辑已移除
 
 const resetScrollPosition = () => {
   window.scrollTo({
@@ -693,14 +580,6 @@ const handleBatchDelete = () => {
     }
   });
 }
-
-const handleExportShow = async () => {
-  let mp_id=activeFeed.value?.id
-  let ids=selectedRowKeys.value
-  let mp_name=activeFeed.value?.name || activeFeed.value?.mp_name || '全部'
-  exportModal.value.show(mp_id,ids,mp_name)
-}
-
 
 onMounted(() => {
   console.log('组件挂载，开始获取数据')

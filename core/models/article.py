@@ -9,6 +9,7 @@ class ArticleBase(Base):
     title = Column(String(1000))
     pic_url = Column(String(500))
     url=Column(String(500))
+    album = Column(String(255))
     description=Column(Text)
     extinfo = Column(Text)
     status = Column(Integer,default=1)
@@ -31,6 +32,7 @@ class Article(ArticleBase):
             'title': self.title,
             'pic_url': self.pic_url,
             'url': self.url,
+            'album': self.album,
             'description': self.description,
             'content': self.content,
             'content_html': self.content_html,

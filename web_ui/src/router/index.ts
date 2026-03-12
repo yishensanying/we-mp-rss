@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import BasicLayout from '../components/Layout/BasicLayout.vue'
-import ExportRecords from '../views/ExportRecords.vue'
 import Login from '../views/Login.vue'
 import ArticleList from '../views/ArticleList.vue'
 import ChangePassword from '../views/ChangePassword.vue'
@@ -53,34 +52,6 @@ const routes = [
       },
       
       {
-        path: 'configs',
-        name: 'ConfigList',
-        component: ConfigList,
-        meta: { 
-          requiresAuth: true,
-          permissions: ['config:view'] 
-        }
-      },
-      {
-        path: 'export/records',
-        name: 'ExportList',
-        component: ExportRecords,
-        meta: { 
-          requiresAuth: true,
-          permissions: ['config:view'] 
-        }
-      },
-      {
-        path: 'configs/:key',
-        name: 'ConfigDetail',
-        component: ConfigDetail,
-        props: true,
-        meta: { 
-          requiresAuth: true,
-          permissions: ['config:view'] 
-        }
-      },
-      {
         path: 'message-tasks',
         name: 'MessageTaskList',
         component: MessageTaskList,
@@ -109,55 +80,9 @@ const routes = [
         }
       },
       {
-        path: 'sys-info',
-        name: 'SysInfo',
-        component: () => import('@/views/SysInfo.vue'),
-        meta: { 
-          requiresAuth: true,
-          permissions: ['admin'] 
-        }
-      },
-      {
-        path: 'tags',
-        name: 'TagList',
-        component: () => import('@/views/TagList.vue'),
-        meta: { 
-          requiresAuth: true,
-          permissions: ['tag:view'] 
-        }
-      },
-      {
-        path: 'tags/add',
-        name: 'TagAdd',
-        component: () => import('@/views/TagForm.vue'),
-        meta: { 
-          requiresAuth: true,
-          permissions: ['tag:edit'] 
-        }
-      },
-      {
-        path: 'tags/edit/:id',
-        name: 'TagEdit',
-        component: () => import('@/views/TagForm.vue'),
-        props: true,
-        meta: { 
-          requiresAuth: true,
-          permissions: ['tag:edit'] 
-        }
-      },
-      {
         path: 'access-keys',
         name: 'AccessKeyManagement',
         component: () => import('@/views/AccessKeyManagement.vue'),
-        meta: { 
-          requiresAuth: true,
-          permissions: ['admin'] 
-        }
-      },
-      {
-        path: 'cascade',
-        name: 'CascadeManagement',
-        component: () => import('@/views/CascadeManagement.vue'),
         meta: { 
           requiresAuth: true,
           permissions: ['admin'] 

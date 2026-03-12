@@ -328,8 +328,6 @@ async def fresh_message_task(
     """
     from jobs.mps import reload_job
     reload_job()
-    from jobs.cascade_task_dispatcher import cascade_schedule_service
-    cascade_schedule_service.reload()
     return success_response(message="任务已经重载成功")
 @router.delete("/{task_id}",summary="删除消息任务")
 async def delete_message_task(

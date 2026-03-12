@@ -11,15 +11,8 @@ from apis.user import router as user_router
 from apis.article import router as article_router
 from apis.mps import router as wx_router
 from apis.res import router as res_router
-from apis.rss import router as rss_router,feed_router
-from apis.config_management import router as config_router
 from apis.message_task import router as task_router
 from apis.sys_info import router as sys_info_router
-from apis.tags import router as tags_router
-from apis.export import router as export_router
-from apis.tools import router as tools_router
-from apis.github_update import router as github_router
-from apis.cascade import router as cascade_router
 from apis.env_exception import router as env_exception_router
 from views import router as views_router
 import apis
@@ -84,25 +77,15 @@ api_router.include_router(auth_router)
 api_router.include_router(user_router)
 api_router.include_router(article_router)
 api_router.include_router(wx_router)
-api_router.include_router(config_router)
 api_router.include_router(task_router)
 api_router.include_router(sys_info_router)
-api_router.include_router(tags_router)
-api_router.include_router(export_router)
-api_router.include_router(tools_router)
-api_router.include_router(github_router)
-api_router.include_router(cascade_router)
 api_router.include_router(env_exception_router)
 
 resource_router = APIRouter(prefix="/static")
 resource_router.include_router(res_router)
-feeds_router = APIRouter()
-feeds_router.include_router(rss_router)
-feeds_router.include_router(feed_router)
 # 注册API路由分组
 app.include_router(api_router)
 app.include_router(resource_router)
-app.include_router(feeds_router)
 app.include_router(views_router)
 
 # 静态文件服务配置

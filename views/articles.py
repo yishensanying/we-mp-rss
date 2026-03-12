@@ -9,7 +9,6 @@ from views.base import _render_template_with_error
 from core.db import DB
 from core.models.article import Article
 from core.models.feed import Feed
-from core.models.tags import Tags
 from apis.base import format_search_kw
 from core.lax.template_parser import TemplateParser
 from views.config import base
@@ -28,7 +27,6 @@ async def articles_view(
     page: int = Query(1, ge=1, description="页码"),
     limit: int = Query(5, ge=1, le=20, description="每页数量"),
     mp_id: Optional[str] = Query(None, description="公众号ID筛选"),
-    tag_id: Optional[str] = Query(None, description="标签ID筛选"),
     keyword: Optional[str] = Query(None, description="关键词搜索"),
     sort: str = Query("publish_time", description="排序方式: publish_time, created_at"),
     order: str = Query("desc", description="排序顺序: asc, desc")
@@ -47,23 +45,10 @@ async def articles_view(
         if order not in valid_orders:
             order = "desc"
         
-        # 预处理标签筛选的mp_ids
-        mps_ids = []
-        if tag_id:
-            tag = session.query(Tags.mps_id).filter(Tags.id == tag_id, Tags.status == 1).scalar()
-            if tag:
-                try:
-                    mps_data = json.loads(tag)
-                    mps_ids = [str(mp['id']) for mp in mps_data] if isinstance(mps_data, list) else []
-                except (json.JSONDecodeError, TypeError):
-                    mps_ids = []
-        
         # 构建基础查询条件
         base_conditions = [Article.status == 1]
         if mp_id:
             base_conditions.append(Article.mp_id == mp_id)
-        if mps_ids:
-            base_conditions.append(Article.mp_id.in_(mps_ids))
         if keyword and keyword.strip():
             search_filter = format_search_kw(keyword.strip())
             if search_filter is not None:
@@ -119,22 +104,10 @@ async def articles_view(
             feed = feed_dict[mp_id]
             filter_info["mp"] = {"id": feed.id, "name": feed.mp_name}
         
-        if tag_id:
-            tag = session.query(Tags.id, Tags.name).filter(Tags.id == tag_id).first()
-            if tag:
-                filter_info["tag"] = {"id": tag.id, "name": tag.name}
-        
-        # 获取标签和热门公众号信息（使用缓存）
-        from core.cache import data_cache
-        
-        # 尝试从缓存获取标签选项
+        # 获取热门公众号信息（使用缓存）
         cache_key_tags = "tag_options_all"
-        tag_options = data_cache.get(cache_key_tags)
-        if tag_options is None:
-            tags = session.query(Tags.id, Tags.name).filter(Tags.status == 1).order_by(Tags.name).all()
-            tag_options = [{"id": tag.id, "name": tag.name} for tag in tags]
-            data_cache.set(cache_key_tags, tag_options)  # 使用默认TTL（1小时）
-        
+        tag_options = []
+
         # 尝试从缓存获取热门公众号
         cache_key_popular = "popular_mps_top10"
         mp_options = data_cache.get(cache_key_popular)
@@ -200,7 +173,6 @@ async def articles_view(
             "info": info,
             "current_filters": {
                 "mp_id": mp_id,
-                "tag_id": tag_id,
                 "keyword": keyword,
                 "sort": sort,
                 "order": order

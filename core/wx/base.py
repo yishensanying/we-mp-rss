@@ -5,9 +5,8 @@ import time
 from core.models import Feed
 from core.db import DB
 from core.models.feed import Feed
-from .cfg import cfg,wx_cfg
-from core.print import print_error,print_info, print_warning, print_success
-from core.rss import RSS
+from .cfg import cfg, wx_cfg
+from core.print import print_error, print_info, print_warning, print_success
 from driver.success import setStatus
 from driver.wxarticle import Web
 from core.wait import Wait
@@ -194,6 +193,7 @@ class WxGather:
                     "url":data['link'],
                     "pic_url":data['cover'],
                     "content":data.get("content",""),
+                    "album": data.get("album", ""),
                     "publish_time":data['update_time'],
                 }
                 if 'digest' in data:
@@ -293,13 +293,6 @@ class WxGather:
         
         if getattr(self, 'articles', None) is not None:
             print(f"成功{len(self.articles)}条")
-            rss=RSS()
-            mp_id=""
-            try:
-                mp_id=self.articles[0]['mp_id']
-            except:
-                pass
-            rss.clear_cache(mp_id=mp_id)  
         
         # 输出执行时间统计
         if execution_time > 0:

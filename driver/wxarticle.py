@@ -1,7 +1,8 @@
 import random
+import threading
 from socket import timeout
 from .playwright_driver import PlaywrightController
-from typing import Dict
+from typing import Dict, Optional
 from core.print import print_error,print_info,print_success,print_warning
 import time
 from core.wait import Wait
@@ -508,4 +509,47 @@ class WXArticleFetcher:
    
 
 
-Web=WXArticleFetcher()
+# 每个线程使用独立的 WXArticleFetcher 做浏览器操作，避免 Playwright sync API 跨线程导致 "Cannot switch to a different thread"
+_tls = threading.local()
+# 仅用于不涉及浏览器的工具方法（get_description/get_image_url/clean_article_content/proxy_images），可在任意线程调用
+_shared_fetcher: Optional[WXArticleFetcher] = None
+
+
+def _get_shared_fetcher():
+    global _shared_fetcher
+    if _shared_fetcher is None:
+        _shared_fetcher = WXArticleFetcher()
+    return _shared_fetcher
+
+
+def _get_fetcher():
+    if not getattr(_tls, "fetcher", None):
+        _tls.fetcher = WXArticleFetcher()
+    return _tls.fetcher
+
+
+class _WebProxy:
+    """Web 模式入口：get_article_content 使用线程内 fetcher；其余方法仅做文本/URL 处理，使用共享 fetcher。"""
+
+    @staticmethod
+    def get_article_content(url: str) -> Dict:
+        return _get_fetcher().get_article_content(url)
+
+    @staticmethod
+    def get_description(content: str, length: int = 200) -> str:
+        return _get_shared_fetcher().get_description(content, length)
+
+    @staticmethod
+    def get_image_url(url: str) -> str:
+        return _get_shared_fetcher().get_image_url(url)
+
+    @staticmethod
+    def clean_article_content(html_content: str) -> str:
+        return _get_shared_fetcher().clean_article_content(html_content)
+
+    @staticmethod
+    def proxy_images(content: str) -> str:
+        return _get_shared_fetcher().proxy_images(content)
+
+
+Web = _WebProxy()

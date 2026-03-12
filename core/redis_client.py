@@ -22,21 +22,32 @@ class RedisClient:
         """初始化Redis连接"""
         if self._client is not None:
             return
-            
-        redis_url = cfg.get("redis.url", "")
-        
-        if not redis_url:
-            print_info("Redis URL未配置，统计功能将禁用")
+
+        # 分字段配置，避免 URL 编码问题
+        host = str(cfg.get("redis.host", "")).strip()
+        port = int(cfg.get("redis.port", 6379))
+        db = int(cfg.get("redis.db", 0))
+        password = str(cfg.get("redis.password", "")).strip()
+        ssl = str(cfg.get("redis.ssl", "False")).strip().lower() in ("true", "1", "yes", "y")
+
+        # 如果未配置 host，则认为未启用 Redis
+        if not host:
+            print_info("Redis 未配置，统计功能将禁用")
             return
-            
+
         try:
-            self._client = redis.from_url(
-                redis_url,
+            # 使用分字段方式创建客户端，密码无需进行 URL 编码
+            self._client = redis.Redis(
+                host=host,
+                port=port,
+                db=db,
+                password=password or None,
+                ssl=ssl,
                 decode_responses=True,
                 socket_connect_timeout=5,
                 socket_timeout=5,
                 retry_on_timeout=True,
-                health_check_interval=30
+                health_check_interval=30,
             )
             # 测试连接
             self._client.ping()

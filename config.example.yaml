@@ -26,11 +26,19 @@ server:
 #如果是oracle数据库，则使用oracle+oracledb://<username>:<password>@<host>:<port>/<service_name>的形式
 db: ${DB:-sqlite:///data/db.db}
 #Redis 连接配置，用于缓存 Token 等数据，可选配置
-#格式: redis://[:password@]host:port/db 或 rediss://[:password@]host:port/db (SSL)
-#例如: redis://localhost:6379/0 或 redis://:password@redis.example.com:6379/1
-#留空则不使用 Redis
+#如果未配置 host，则不使用 Redis
+#推荐使用分字段配置，避免 URL 编码问题（密码中可以直接包含 @、: 等字符）
 redis:
-  url: ${REDIS_URL:-}
+  # Redis 主机名或 IP，留空则不启用 Redis
+  host: ${REDIS_HOST:-}
+  # Redis 端口，默认 6379
+  port: ${REDIS_PORT:-6379}
+  # Redis 数据库索引，默认 0
+  db: ${REDIS_DB:-0}
+  # Redis 密码，留空表示无密码
+  password: ${REDIS_PASSWORD:-}
+  # 是否启用 SSL（rediss），可选 True/False，默认 False
+  ssl: ${REDIS_SSL:-False}
 #通知
 notice:
   #通知方式，可选dingding、wechat、feishu、custom
@@ -57,26 +65,6 @@ debug: ${DEBUG:-False}
 
 #最大页数 第一次添加 采集的页数默认5页
 max_page: ${MAX_PAGE:-5}
-
-rss:
-  #RSS域名地址：如https://www.xxx.com/
-  base_url: ${RSS_BASE_URL:-}
-  #是否为本地RSS链接，默认True，当为False时直接出外部链接
-  local: ${RSS_LOCAL:-False}
-  #RSS标题
-  title: ${RSS_TITLE:-}
-  #RSS描述
-  description: ${RSS_DESCRIPTION:-}
-  #RSS封面
-  cover: ${RSS_COVER:-}
-  #是否显示全文 默认False
-  full_context: ${RSS_FULL_CONTEXT:-True}
-  #是否添加封面图片 默认False
-  add_cover: ${RSS_ADD_COVER:-True}
-  #RSS正文是否启用 CDATA
-  cdata: ${RSS_CDATA:-False}
-  #RSS分页大小 默认10
-  page_size: ${RSS_PAGE_SIZE:-30}
 
 #登录会话有效时长 单位分钟 默认4320分钟 3天
 token_expire_minutes: ${TOKEN_EXPIRE_MINUTES:-4320}
@@ -157,16 +145,5 @@ export:
 
 site:
   name: ${SITE_NAME:-WeRss}
-  description: ${SITE_DESCRIPTION:-A WeChat Official Account RSS Reader}
-  keywords: ${SITE_KEYWORDS:-}WeChat,Official Account,RSS,Reader
-
-cascade:
-  enabled: ${CASCADE_ENABLED:-False}
-  node_type: ${CASCADE_NODE_TYPE:-child}
-  parent_api_url: ${CASCADE_PARENT_API_URL:-http://localhost:8001}
-  api_key: ${CASCADE_API_KEY:-}
-  api_secret: ${CASCADE_API_SECRET:-}
-  sync_interval: ${CASCADE_SYNC_INTERVAL:-300}
-  heartbeat_interval: ${CASCADE_HEARTBEAT_INTERVAL:-60}
-  # 子节点任务拉取间隔（秒），默认30秒
-  task_poll_interval: ${CASCADE_TASK_POLL_INTERVAL:-30}
+  description: ${SITE_DESCRIPTION:-微信公众号订阅助手}
+  keywords: ${SITE_KEYWORDS:-}

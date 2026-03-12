@@ -100,8 +100,6 @@ class Db:
      
     def add_article(self, article_data: dict,check_exist=False) -> bool:
         try:
-            result = True
-            session=self.get_session()
             from datetime import datetime
 
             def _to_unix_seconds(value) -> int:
@@ -155,16 +153,18 @@ class Db:
                         return fallback_seconds * 1000
                 return fallback_seconds * 1000
 
+            session = self.get_session()
             art = Article(**article_data)
             if art.id:
                art.id=f"{str(art.mp_id)}-{art.id}".replace("MP_WXS_","")
-            
+
             existing = session.query(Article).filter(Article.id == art.id).first()
 
             if check_exist and existing is not None:
                 print_warning(f"Article already exists: {art.id}")
                 return False
 
+            result = True
             now = datetime.now()
             has_new_content = art.content and art.content.strip()
 
@@ -189,6 +189,7 @@ class Db:
                 html, md = fix_content(art.content)
                 art.content_html = html
                 art.content_markdown = md
+
             from core.models.base import DATA_STATUS
             art.status = DATA_STATUS.ACTIVE
             session.merge(art)
