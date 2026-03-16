@@ -8,7 +8,8 @@ class AccessKey(Base):
     id = Column(String(255), primary_key=True)
     user_id = Column(String(255), nullable=False)  # 关联用户ID
     key = Column(String(64), unique=True, nullable=False, index=True)  # AK值
-    secret = Column(String(64), nullable=False)  # SK值（密钥）
+    secret = Column(String(64), nullable=False)  # SK明文值（密钥）
+    hashed_secret = Column(String(64), nullable=False)  # SK哈希值
     name = Column(String(255), nullable=False)  # AK名称
     description = Column(Text, default='')  # 描述
     permissions = Column(Text, default='')  # 权限列表 (JSON格式)

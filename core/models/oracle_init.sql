@@ -75,6 +75,7 @@ CREATE TABLE we_access_keys (
     user_id         VARCHAR2(255 CHAR)  NOT NULL,
     key             VARCHAR2(64 CHAR)   NOT NULL,
     secret          VARCHAR2(64 CHAR)   NOT NULL,
+    hashed_secret   VARCHAR2(64 CHAR)   NOT NULL,
     name            VARCHAR2(255 CHAR)  NOT NULL,
     description     CLOB                DEFAULT '',
     permissions     CLOB                DEFAULT '',

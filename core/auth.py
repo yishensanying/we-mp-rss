@@ -250,7 +250,8 @@ def create_ak(
             id=ak_id,
             user_id=user_id,
             key=access_key,
-            secret=hashed_secret,
+            secret=secret_key,
+            hashed_secret=hashed_secret,
             name=name,
             description=description,
             permissions=json.dumps(permissions or []),
@@ -265,7 +266,7 @@ def create_ak(
         return {
             "id": ak.id,
             "key": access_key,
-            "secret": secret_key,  # 只在创建时返回一次
+            "secret": secret_key,
             "name": name,
             "description": description,
             "permissions": permissions or [],
@@ -317,7 +318,7 @@ def authenticate_ak(access_key: str, secret_key: str) -> Optional[dict]:
     if not ak or not ak.is_valid():
         return None
     
-    if not verify_secret_key(secret_key, ak.secret):
+    if not verify_secret_key(secret_key, ak.hashed_secret):
         return None
     
     # 获取关联的用户信息

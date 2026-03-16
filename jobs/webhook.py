@@ -248,7 +248,7 @@ def web_hook(hook:MessageWebHook, is_test:bool = False):
             else:
                 # 如果是Article对象，使用getattr获取属性
                 def process_field_value_obj(field_name, article):
-                    value = getattr(article, field.name, "")
+                    value = getattr(article, field_name, "")
                     if field_name == "publish_time" and value:
                         # 如果已经是格式化的字符串，直接返回
                         if isinstance(value, str) and "-" in value and ":" in value:
