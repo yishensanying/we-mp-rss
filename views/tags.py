@@ -134,7 +134,7 @@ async def tag_detail_view(
     request: Request,
     tag_id: str,
     page: int = Query(1, ge=1, description="页码"),
-    limit: int = Query(20, ge=1, le=100, description="每页文章数量"),
+    limit: int = Query(8, ge=1, le=20, description="每页文章数量"),
     keyword: Optional[str] = Query(None, description="搜索关键字")
 ):
     """

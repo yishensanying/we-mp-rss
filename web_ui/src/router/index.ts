@@ -15,6 +15,7 @@ import NovelReader from '../views/NovelReader.vue'
 import FilterRuleList from '../views/FilterRuleList.vue'
 import FilterRuleForm from '../views/FilterRuleForm.vue'
 import TaskQueueView from '../views/TaskQueueView.vue'
+import ForgotPassword from '../views/ForgotPassword.vue'
 
 const routes = [
   {
@@ -218,6 +219,11 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: Login
+  },
+  {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: ForgotPassword
   },
   {
         path: '/reader',
