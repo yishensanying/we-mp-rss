@@ -18,6 +18,17 @@ CREATE TABLE we_articles (
     content_markdown CLOB,
     status          NUMBER(10)          DEFAULT 1,
     publish_time    NUMBER(10),
+    create_time     NUMBER(10),
+    publish_type    NUMBER(10),
+    publish_src     NUMBER(10),
+    publish_status  VARCHAR2(255 CHAR),
+    original_check_type NUMBER(10),
+    in_profile      NUMBER(10),
+    pre_publish_status NUMBER(10),
+    service_type    NUMBER(10),
+    item_show_types NUMBER(10),
+    copyright_stat  NUMBER(10),
+    has_red_packet_cover NUMBER(10),
     created_at      TIMESTAMP,
     updated_at      TIMESTAMP,
     updated_at_millis NUMBER(19),
@@ -30,6 +41,17 @@ CREATE TABLE we_articles (
 CREATE INDEX ix_we_articles_mp_id ON we_articles (mp_id);
 CREATE INDEX ix_we_articles_status ON we_articles (status);
 CREATE INDEX ix_we_articles_pub_time ON we_articles (publish_time);
+CREATE INDEX ix_we_articles_create_time ON we_articles (create_time);
+CREATE INDEX ix_we_articles_publish_type ON we_articles (publish_type);
+CREATE INDEX ix_we_articles_publish_src ON we_articles (publish_src);
+CREATE INDEX ix_we_articles_publish_status ON we_articles (publish_status);
+CREATE INDEX ix_we_articles_original_check_type ON we_articles (original_check_type);
+CREATE INDEX ix_we_articles_in_profile ON we_articles (in_profile);
+CREATE INDEX ix_we_articles_pre_publish_status ON we_articles (pre_publish_status);
+CREATE INDEX ix_we_articles_service_type ON we_articles (service_type);
+CREATE INDEX ix_we_articles_item_show_types ON we_articles (item_show_types);
+CREATE INDEX ix_we_articles_copyright_stat ON we_articles (copyright_stat);
+CREATE INDEX ix_we_articles_has_red_packet_cover ON we_articles (has_red_packet_cover);
 CREATE INDEX ix_we_articles_upd_millis ON we_articles (updated_at_millis);
 
 -- 2. we_feeds 公众号信息表

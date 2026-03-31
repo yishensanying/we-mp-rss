@@ -311,7 +311,7 @@ class WxGather:
             import os
             if str(os.getenv('WE_RSS.AUTH',False))!="True" and cfg.get("server.send_code")=="True":
                 threading.Thread(target=send_wx_code,args=(f"公众号平台登录失效,请重新登录",)).start()
-            # send_wx_code(f"公众号平台登录失效,请重新登录")
+                send_wx_code(f"公众号平台登录失效,请重新登录")
             raise Exception(error)
         # raise Exception(error)
         print_error(error)
