@@ -76,6 +76,8 @@ rss:
   cdata: ${RSS_CDATA:-False}
   #RSS分页大小 默认10
   page_size: ${RSS_PAGE_SIZE:-30}
+  #单个 RSS/Atom 输出的最大条目数，防止文件体积过大
+  max_items: ${RSS_MAX_ITEMS:-30}
 
 #登录会话有效时长 单位分钟 默认4320分钟 3天
 token_expire_minutes: ${TOKEN_EXPIRE_MINUTES:-4320}

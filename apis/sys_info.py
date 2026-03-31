@@ -82,7 +82,7 @@ async def get_system_info(
     """
     try:
       
-        wx_cfg.reload()
+        from driver.token import get as get_val
         # 获取系统信息
         system_info = {
             'os': {
@@ -103,8 +103,8 @@ async def get_system_info(
             'latest_version':LATEST_VERSION,
             'need_update':CORE_VERSION != LATEST_VERSION,
             "wx":{
-                'token':wx_cfg.get('token',''),
-                'expiry_time':wx_cfg.get('expiry.expiry_time','') if getStatus() else "",
+                'token':get_val('token',''),
+                'expiry_time':get_val('expiry.expiry_time','') if getStatus() else "",
                 "info":getLoginInfo(),
                 "login":getStatus(),
             },

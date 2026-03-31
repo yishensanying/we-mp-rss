@@ -10,15 +10,159 @@ from .base import success_response, error_response
 from datetime import datetime
 from core.config import cfg
 from core.res import save_avatar_locally
+from core.models.feed import FEATURED_MP_ID, FEATURED_MP_NAME, FEATURED_MP_INTRO
+from core.models.base import DATA_STATUS
+from core.cache import clear_cache_pattern
 import io
 import os
 from jobs.article import UpdateArticle
 from driver.wxarticle import WXArticleFetcher
+import threading
+from uuid import uuid4
 router = APIRouter(prefix=f"/mps", tags=["公众号管理"])
 # import core.db as db
 # UPDB=db.Db("数据抓取")
 # def UpdateArticle(art:dict):
 #             return UPDB.add_article(art)
+
+
+def build_featured_mp_item():
+    now = datetime.now().isoformat()
+    return {
+        "id": FEATURED_MP_ID,
+        "mp_name": FEATURED_MP_NAME,
+        "mp_cover": "/static/logo.svg",
+        "mp_intro": FEATURED_MP_INTRO,
+        "status": 1,
+        "created_at": now,
+        "is_system": True
+    }
+
+
+_featured_article_tasks = {}
+_featured_article_tasks_lock = threading.Lock()
+
+
+def _set_featured_article_task(task_id: str, data: dict):
+    with _featured_article_tasks_lock:
+        _featured_article_tasks[task_id] = data
+
+
+def _ensure_featured_feed(session):
+    from core.models.feed import Feed
+
+    featured_feed = session.query(Feed).filter(Feed.id == FEATURED_MP_ID).first()
+    if featured_feed:
+        return featured_feed
+
+    now = datetime.now()
+    featured_feed = Feed(
+        id=FEATURED_MP_ID,
+        mp_name=FEATURED_MP_NAME,
+        mp_cover="logo.svg",
+        mp_intro=FEATURED_MP_INTRO,
+        status=1,
+        sync_time=0,
+        update_time=0,
+        created_at=now,
+        updated_at=now,
+        faker_id=FEATURED_MP_ID
+    )
+    session.add(featured_feed)
+    return featured_feed
+
+
+def _run_add_featured_article_task(task_id: str, url: str):
+    session = None
+    fetcher = None
+    try:
+        print(f"[featured_article_task] start task_id={task_id}")
+        _set_featured_article_task(task_id, {
+            "task_id": task_id,
+            "url": url,
+            "status": "running",
+            "message": "任务执行中"
+        })
+        session = DB.get_session()
+
+        target_url = str(url or "").strip()
+        if not target_url:
+            raise ValueError("请输入文章链接")
+
+        print(f"[featured_article_task] fetching article task_id={task_id} url={target_url}")
+        fetcher = WXArticleFetcher()
+        info = fetcher.get_article_content(target_url)
+        if not info or info.get("fetch_error"):
+            raise ValueError(info.get("fetch_error") or "文章抓取失败，请检查链接或登录状态")
+
+        if info.get("content") == "DELETED":
+            raise ValueError("该文章暂不可访问或已删除")
+
+        raw_article_id = info.get("id") or fetcher.extract_id_from_url(target_url)
+        if not raw_article_id:
+            raise ValueError("无法解析文章ID，请确认链接格式")
+
+        _ensure_featured_feed(session)
+        session.commit()
+
+        now = datetime.now()
+        publish_time = info.get("publish_time")
+        if not isinstance(publish_time, int):
+            try:
+                publish_time = int(publish_time)
+            except Exception:
+                publish_time = int(now.timestamp())
+
+        article_data = {
+            "id": raw_article_id,
+            "mp_id": FEATURED_MP_ID,
+            "title": info.get("title") or target_url,
+            "description": info.get("description") or fetcher.get_description(info.get("content") or ""),
+            "content": info.get("content") or "",
+            "publish_time": publish_time,
+            "url": target_url,
+            "pic_url": info.get("topic_image") or info.get("pic_url") or "",
+        }
+
+        # 统一通过 DB.add_article 处理文章入库与内容转换
+        created = DB.add_article(article_data)
+        article_id = f"{FEATURED_MP_ID}-{raw_article_id}".replace("MP_WXS_", "")
+        print(f"[featured_article_task] db committed via DB.add_article task_id={task_id} article_id={article_id}")
+        clear_cache_pattern("articles_list")
+        clear_cache_pattern("article_detail")
+        clear_cache_pattern("home_page")
+        clear_cache_pattern("tag_detail")
+
+        _set_featured_article_task(task_id, {
+            "task_id": task_id,
+            "url": target_url,
+            "status": "success",
+            "message": "精选文章添加成功" if created else "精选文章更新成功",
+            "id": article_id,
+            "mp_id": FEATURED_MP_ID,
+            "mp_name": FEATURED_MP_NAME,
+            "title": article_data["title"],
+            "created": created
+        })
+        print(f"[featured_article_task] success task_id={task_id}")
+    except Exception as e:
+        if session is not None:
+            session.rollback()
+        print(f"[featured_article_task] failed task_id={task_id} error={str(e)}")
+        _set_featured_article_task(task_id, {
+            "task_id": task_id,
+            "url": url,
+            "status": "failed",
+            "message": str(e)
+        })
+    finally:
+        if fetcher is not None:
+            try:
+                fetcher.Close()
+            except Exception:
+                pass
+        if session is not None:
+            session.close()
 
 
 @router.get("/search/{kw}", summary="搜索公众号")
@@ -55,25 +199,32 @@ async def get_mps(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
     kw: str = Query(""),
+    status: int = Query(None, description="状态筛选: 1=启用, 0=停用, 不传=全部"),
     current_user: dict = Depends(get_current_user_or_ak)
 ):
     session = DB.get_session()
     try:
         from core.models.feed import Feed
-        query = session.query(Feed)
+        query = session.query(Feed).filter(Feed.id != FEATURED_MP_ID)
         if kw:
             query = query.filter(Feed.mp_name.ilike(f"%{kw}%"))
-        total = query.count()
+        if status is not None:
+            query = query.filter(Feed.status == status)
+        total = query.count() + 1
         mps = query.order_by(Feed.created_at.desc()).limit(limit).offset(offset).all()
-        return success_response({
-            "list": [{
+        mps_list = [{
                 "id": mp.id,
                 "mp_name": mp.mp_name,
                 "mp_cover": mp.mp_cover,
                 "mp_intro": mp.mp_intro,
                 "status": mp.status,
                 "created_at": mp.created_at.isoformat()
-            } for mp in mps],
+            } for mp in mps]
+        # 只在筛选全部且无搜索关键词时添加精选文章
+        if offset == 0 and status is None and not kw:
+            mps_list.insert(0, build_featured_mp_item())
+        return success_response({
+            "list": mps_list,
             "page": {
                 "limit": limit,
                 "offset": offset,
@@ -90,6 +241,79 @@ async def get_mps(
                 message="获取公众号列表失败"
             )
         )
+
+
+@router.post("/featured/article", summary="添加精选文章")
+async def add_featured_article(
+    url: str = Body(..., embed=True, min_length=1),
+    current_user: dict = Depends(get_current_user_or_ak)
+):
+    try:
+        target_url = str(url or "").strip()
+        if not target_url:
+            raise HTTPException(
+                status_code=status.HTTP_201_CREATED,
+                detail=error_response(
+                    code=40001,
+                    message="请输入文章链接"
+                )
+            )
+        if "mp.weixin.qq.com/s/" not in target_url:
+            raise HTTPException(
+                status_code=status.HTTP_201_CREATED,
+                detail=error_response(
+                    code=40002,
+                    message="请输入有效的公众号文章链接"
+                )
+            )
+
+        task_id = str(uuid4())
+        _set_featured_article_task(task_id, {
+            "task_id": task_id,
+            "url": target_url,
+            "status": "pending",
+            "message": "任务已创建"
+        })
+        threading.Thread(
+            target=_run_add_featured_article_task,
+            args=(task_id, target_url),
+            daemon=True
+        ).start()
+
+        return success_response({
+            "task_id": task_id,
+            "url": target_url,
+            "status": "pending"
+        }, message="已开始添加/抓取，请稍后刷新查看结果")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"添加精选文章任务启动失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_201_CREATED,
+            detail=error_response(
+                code=50001,
+                message="添加精选文章失败"
+            )
+        )
+
+
+@router.get("/featured/article/tasks/{task_id}", summary="查询精选文章添加任务状态")
+async def get_featured_article_task_status(
+    task_id: str,
+    current_user: dict = Depends(get_current_user_or_ak)
+):
+    with _featured_article_tasks_lock:
+        task = _featured_article_tasks.get(task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=error_response(
+                code=40404,
+                message="任务不存在"
+            )
+        )
+    return success_response(task)
 
 @router.get("/update/{mp_id}", summary="更新公众号文章")
 async def update_mps(

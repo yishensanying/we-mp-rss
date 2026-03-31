@@ -2,7 +2,7 @@ import uvicorn
 from core.config import cfg
 from core.print import print_warning, print_info, print_success
 import threading
-from driver.auth import *
+from driver.auth import start_auth_service   
 import os
 if __name__ == '__main__':
     print("环境变量:")
@@ -11,7 +11,7 @@ if __name__ == '__main__':
     if cfg.args.init=="True":
         import init_sys as init
         init.init()
-    
+    start_auth_service()
     # 启动级联同步服务（如果配置为子节点）
     cascade_service_started = False
     if cfg.get("cascade.enabled", False) and cfg.get("cascade.node_type") == "child":
@@ -66,10 +66,11 @@ if __name__ == '__main__':
     print("启动服务器")
     AutoReload=cfg.get("server.auto_reload",False)
     thread=cfg.get("server.threads",1)
+    reload_dirs = ["apis", "core", "driver", "jobs", "schemas", "tools", "views", "web_ui"]
     uvicorn.run("web:app", host="0.0.0.0", port=int(cfg.get("port",8001)),
             reload=AutoReload,
-            reload_dirs=['core','web_ui'],
-            reload_excludes=['static','web_ui','data'], 
+            reload_dirs=reload_dirs,
+            reload_excludes=['static','data','node_modules','*.pnpm*'],
             workers=thread,
             )
     pass

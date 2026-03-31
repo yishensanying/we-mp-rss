@@ -18,7 +18,7 @@ class MpsAppMsg(WxGather):
             r = App.get_article_content(url)
             if r!=None:
                 text = r.get("content","")
-                text=self.remove_common_html_elements(text)
+                # text=self.remove_common_html_elements(text)
                 return  text
         except Exception as e:
             logger.error(e)

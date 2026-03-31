@@ -10,12 +10,13 @@ from PIL import Image
 from .success import Success
 import time
 import os
-from driver.success import getStatus
+from driver.success import getStatus,getLockStatus,setLockStatus
 from driver.store import Store
 import re
 from threading import Timer, Lock
 from .cookies import expire
 import json
+import psutil
 from core.print import print_error,print_warning,print_info,print_success
 class Wx:
     _haslogin=False
@@ -103,7 +104,7 @@ class Wx:
             
             # 等待页面加载完成
             page.wait_for_load_state("networkidle")
-            
+            self._haslogin=False
             # 点击账号信息区域打开账号面板
             account_info = page.locator(".weui-desktop-account__info")
             if account_info.count() > 0:
@@ -142,7 +143,9 @@ class Wx:
                                 # 等待页面加载并验证切换成功
                                 page.wait_for_load_state("networkidle", timeout=10000)
                                 time.sleep(2)
-                                self.Call_Success(has_extdata=False)
+                                session_data = self.Call_Success(has_extdata=False)
+
+                               
 
                                 self.Token(isClose=False)
                                 print_success("账号切换成功")
@@ -209,6 +212,9 @@ class Wx:
                 raise Exception(f"登录已经失效，请重新登录")
         except Exception as e:
             raise Exception(f"浏览器关闭")  # 重新抛出异常以便外部捕获处理
+    def QrStatus(self):
+        return {"login_status":self.HasLogin(),"qr_code":self.GetHasCode()}
+
     def HasLogin(self):
         with self._login_lock:
             return self._haslogin
@@ -224,7 +230,7 @@ class Wx:
             self.refresh_task()
             # 使用守护线程避免资源泄露
             timer = Timer(self.refresh_interval, self.schedule_refresh)
-            timer.daemon = True
+            timer.daemon = True  # 设置为守护线程，避免内存泄漏
             timer.start()
         except Exception as e:
             print_error(f"定时刷新任务失败: {str(e)}")
@@ -235,10 +241,14 @@ class Wx:
             if not getStatus():
                 print_warning("登录状态检查失败")
                 return None
+            if getLockStatus():
+                print_warning("正在切换帐号,请稍后")
+                return None
+
+            setLockStatus(True)    
                 
-                
-            from driver.token import wx_cfg
-            token = str(wx_cfg.get("token", ""))
+            from driver.token import get as get_val
+            token = str(get_val("token", ""))
             if not token:
                 print_warning("未找到有效的token")
                 return None
@@ -367,7 +377,7 @@ class Wx:
                 if self.WX_HOME in current_url:
                     print(f"登录成功，正在获取cookie和token...")
             page.on('framenavigated', handle_frame_navigated)
-            page.wait_for_event("framenavigated", timeout=60 * 1000)
+            page.wait_for_event("framenavigated", timeout=5*60 * 1000)
            
             from .success import setStatus
             with self._login_lock:
@@ -378,6 +388,7 @@ class Wx:
         except Exception as e:
             if "Timeout" in str(e):
                 print_warning("\n扫码登录超时，请重新运行程序进行扫码登录")
+
             else:
                 print_error(f"\n错误发生: {str(e)}")
             self.SESSION=None
@@ -386,7 +397,7 @@ class Wx:
             self.release_lock()
             if NeedExit :
                 self.Clean()
-                self.Close()
+            self.Close()
         return self.SESSION
     def format_token(self, cookies: list, token: str = ""):
         cookies_str=""
@@ -429,6 +440,11 @@ class Wx:
                 print_error(f"获取公众号信息失败: {str(e)}")
                 self.ext_data = None
             Store.save(cookies)
+             # 保存新的 token 和 cookie
+            if self.SESSION and self.SESSION.get("token"):
+                from driver.token import set_token
+                set_token(self.SESSION, self.ext_data)
+                print_success(f"已更新Token: {self.SESSION.get('token')}")
             print_success("登录成功！")
         else:
             print_warning("未登录！")
@@ -549,25 +565,40 @@ class Wx:
             print(f"设置cookie过期时出错: {str(e)}")
             return False
             
-    def check_lock(self):
-        """检查锁定状态"""
-        time.sleep(1)
-        return os.path.exists(self.lock_file_path) or self.GetHasCode()
-        
+    def check_lock(self, timeout: int = 300) -> bool:
+        if not os.path.exists(self.wx_login_url):
+            return False
+        return True
     def set_lock(self):
-        """创建锁定文件"""
+        """创建锁定文件，写入当前进程PID和时间戳"""
+        os.makedirs(os.path.dirname(self.lock_file_path), exist_ok=True)
+        current_pid = os.getpid()
         with open(self.lock_file_path, 'w') as f:
-            f.write(str(time.time()))
+            f.write(f"{current_pid}|{time.time()}")
         self.isLOCK = True
         
     def release_lock(self):
         """删除锁定文件"""
         try:
-            os.remove(self.lock_file_path)
+            # 只释放当前进程持有的锁
+            if os.path.exists(self.lock_file_path):
+                with open(self.lock_file_path, 'r') as f:
+                    content = f.read().strip()
+                parts = content.split('|')
+                if parts and int(parts[0]) == os.getpid():
+                    os.remove(self.lock_file_path)
             self.isLOCK = False
             return True
-        except:
+        except Exception:
             return False
+    
+    def _force_release_lock(self):
+        """强制释放锁（用于清理过期或损坏的锁）"""
+        try:
+            if os.path.exists(self.lock_file_path):
+                os.remove(self.lock_file_path)
+        except Exception:
+            pass
 
 
 WX_API = Wx()

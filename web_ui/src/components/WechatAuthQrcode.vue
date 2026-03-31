@@ -67,6 +67,7 @@ const startAuth = async () => {
         }).catch((err) => {
           console.error('检查二维码状态失败:', err)
           errorMessage.value = '授权失败，请重试'
+          visible.value = false
            emit('error', err)
         })
   } catch (err) {

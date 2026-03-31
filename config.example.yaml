@@ -11,11 +11,13 @@ server:
    #启动JOB定时任务，默认为True
    enable_job: ${ENABLE_JOB:-True}
    #代码修改自动重启服务，默认为False
-   auto_reload: ${AUTO_RELOAD:-True}
+   auto_reload: ${AUTO_RELOAD:-False}
    #最大线程数 默认2个线程，不建议超过4个线程
    threads: ${THREADS:-1}
    #通过web方式授权二维码 默认False 
    auth_web: ${WERSS_AUTH_WEB:-True}
+   #是否发送授权二维通知 默认True
+   send_code: ${WERSS_SEND_CODE:-True}
 
 
 #数据库连接 例如db:  mysql+pymysql://<username>:<password>@<host>/we-rss?charset=utf8mb4
@@ -77,6 +79,8 @@ rss:
   cdata: ${RSS_CDATA:-False}
   #RSS分页大小 默认10
   page_size: ${RSS_PAGE_SIZE:-30}
+  #单个 RSS/Atom 输出的最大条目数，防止文件体积过大
+  max_items: ${RSS_MAX_ITEMS:-30}
 
 #登录会话有效时长 单位分钟 默认4320分钟 3天
 token_expire_minutes: ${TOKEN_EXPIRE_MINUTES:-4320}
