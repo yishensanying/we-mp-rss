@@ -6,4 +6,6 @@ from .feed import Feed
 from .user import User
 from .message_task import MessageTask
 from .access_key import AccessKey
+# 导入过滤规则模型
+from .filter_rule import FilterRule
 from .base import *

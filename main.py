@@ -2,7 +2,8 @@ import uvicorn
 from core.config import cfg
 from core.print import print_warning, print_success
 import threading
-from driver.auth import *
+from driver.auth import start_auth_service   
+import os
 
 
 if __name__ == '__main__':
@@ -13,6 +14,7 @@ if __name__ == '__main__':
     if getattr(cfg, "args", None) and getattr(cfg.args, "init", "False") == "True":
         import init_sys as init
         init.init()
+    start_auth_service()
 
     if cfg.args.job == "True" and cfg.get("server.enable_job", False):
         from jobs import start_job
@@ -30,10 +32,11 @@ if __name__ == '__main__':
     print("启动服务器")
     AutoReload=cfg.get("server.auto_reload",False)
     thread=cfg.get("server.threads",1)
+    reload_dirs = ["apis", "core", "driver", "jobs", "schemas", "tools", "views", "web_ui"]
     uvicorn.run("web:app", host="0.0.0.0", port=int(cfg.get("port",8001)),
             reload=AutoReload,
-            reload_dirs=['core','web_ui'],
-            reload_excludes=['static','web_ui','data'], 
+            reload_dirs=reload_dirs,
+            reload_excludes=['static','data','node_modules','*.pnpm*'],
             workers=thread,
             )
     pass

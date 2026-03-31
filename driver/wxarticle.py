@@ -27,6 +27,9 @@ class WXArticleFetcher:
         """初始化文章获取器"""
         self.wait_timeout = wait_timeout
         self.controller = PlaywrightController()
+        self.browser_proxy_url = ""
+        if cfg.get("proxy.enabled", False):
+            self.browser_proxy_url = cfg.get("proxy.http_url", "")
         if not self.controller:
             raise Exception("WebDriver未初始化或未登录")
     
@@ -250,6 +253,7 @@ class WXArticleFetcher:
                 "publish_time": "",
                 "content": "",
                 "images": "",
+                "fetch_error": "",
                 "mp_info":{
                 "mp_name":"",   
                 "logo":"",
@@ -257,7 +261,7 @@ class WXArticleFetcher:
                 }
             }
         try:
-            self.controller.start_browser()
+            self.controller.start_browser(proxy_url=self.browser_proxy_url)
         
             self.page = self.controller.page
             if cfg.get("proxy.deno_url","")!="" and cfg.get("proxy.enabled",False):
@@ -361,6 +365,7 @@ class WXArticleFetcher:
             info["topic_image"]=topic_image
 
         except Exception as e:
+            info["fetch_error"] = str(e)
             print_error(f"文章内容获取失败: {str(e)}")
             body_preview = body[:50] if 'body' in dir() else "N/A"
             print_warning(f"页面内容预览: {body_preview}...")
@@ -452,8 +457,9 @@ class WXArticleFetcher:
             print_error(f"修复图片失败: {str(e)}")
         return content
     def get_image_url(self,url:str)->str:
-        base_url=cfg.get("server.base_url","")
-        return f"{base_url}/static/res/logo/{url}" 
+        # base_url=cfg.get("server.base_url","")
+        # return f"{base_url}/static/res/logo/{url}" 
+        return f"{url}" 
     def get_description(self,content:str,length:int=200)->str:
         soup = BeautifulSoup(content, 'html.parser')
             # 找到内容
@@ -464,6 +470,9 @@ class WXArticleFetcher:
         return content[:length]+"..." if len(content)>length else content
 
     def proxy_images(self,content:str)->str:
+        # 防御性检查：确保 content 不是 None
+        if not content:
+            return ""
         try:
             soup = BeautifulSoup(content, 'html.parser')
             # 找到内容
@@ -488,12 +497,31 @@ class WXArticleFetcher:
             print_error(f"Proxy图片失败: {str(e)}")
         return content
    
-    def clean_article_content(self,html_content: str):
+    def clean_article_content(self,html_content: str,mp_id:str=""):
         from tools.htmltools import htmltools
         html_content=self.fix_images(html_content)
+        # 应用过滤规则
+        try:
+            from apis.filter_rule import apply_filter_rules
+            print(f"[DB] 准备应用过滤规则: mp_id={mp_id}, content_html存在={html_content is not None}")
+            if html_content:
+                html_content = apply_filter_rules(html_content, mp_id)
+
+        except Exception as e:
+            print_warning(f"应用过滤规则失败: {e}")
         if not cfg.get("gather.clean_html",False):
             return html_content
+        
         return htmltools.clean_html(str(html_content).strip(),
+                                remove_ids=
+                                ['content_bottom_interaction',
+                                 'activity-name',
+                                 'meta_content',
+                                 "js_article_bottom_bar",
+                                 "js_pc_weapp_code",
+                                 "js_novel_card",
+                                 "js_pc_qr_code"
+                                 ],
                                  remove_selectors=[
                                      "link",
                                      "head",

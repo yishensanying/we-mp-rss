@@ -17,6 +17,18 @@
         </template>
         消息任务
       </a-menu-item>
+      <a-menu-item key="/filter-rules">
+        <template #icon>
+          <icon-filter />
+        </template>
+        过滤规则
+      </a-menu-item>
+      </a-menu-item>
+      <a-menu-item key="/task-queue">
+        <template #icon>
+          <icon-list />
+        </template>
+        任务队列
       <a-menu-item key="/access-keys">
         <template #icon>
           <icon-key />

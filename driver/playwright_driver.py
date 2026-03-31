@@ -7,7 +7,9 @@ import json
 import random
 import uuid
 import asyncio
+import threading
 from socket import timeout
+from urllib.parse import urlparse, unquote
 
 from core.print import print_error
 
@@ -21,13 +23,52 @@ from playwright.sync_api import sync_playwright
 from playwright.async_api import async_playwright
 
 class PlaywrightController:
+    # 使用线程本地存储，每个线程拥有独立的 playwright 实例
+    # 解决 greenlet "Cannot switch to a different thread" 错误
+    _thread_local = threading.local()
+    _global_lock = threading.Lock()
+    
+    # 每个线程的引用计数，用于正确清理资源
+    _thread_ref_counts = {}
+
     def __init__(self):
         self.system = platform.system().lower()
-        self.driver = None
+        self.driver = None  # 指向线程本地的 playwright driver
         self.browser = None
         self.context = None
         self.page = None
         self.isClose = True
+
+    def _mask_proxy_url(self, proxy_url: str) -> str:
+        if not proxy_url:
+            return ""
+        parsed = urlparse(proxy_url)
+        if parsed.username or parsed.password:
+            netloc = parsed.hostname or ""
+            if parsed.port:
+                netloc = f"{netloc}:{parsed.port}"
+            return f"{parsed.scheme}://***:***@{netloc}"
+        return proxy_url
+
+    def _build_proxy_options(self, proxy_url: str):
+        if not proxy_url:
+            return None
+
+        parsed = urlparse(proxy_url)
+        if not parsed.scheme or not parsed.hostname:
+            raise ValueError(f"代理地址格式无效: {proxy_url}")
+
+        server = f"{parsed.scheme}://{parsed.hostname}"
+        if parsed.port:
+            server = f"{server}:{parsed.port}"
+
+        proxy_options = {"server": server}
+        if parsed.username:
+            proxy_options["username"] = unquote(parsed.username)
+        if parsed.password:
+            proxy_options["password"] = unquote(parsed.password)
+        return proxy_options
+
     def _is_browser_installed(self, browser_name):
         """检查指定浏览器是否已安装"""
         try:
@@ -59,9 +100,8 @@ class PlaywrightController:
                 self.browser is not None and 
                 self.context is not None and 
                 self.page is not None)
-    def start_browser(self, headless=True, mobile_mode=False, dis_image=True, browser_name=browsers_name, language="zh-CN", anti_crawler=True):
+    def start_browser(self, headless=True, mobile_mode=False, dis_image=True, browser_name=browsers_name, language="zh-CN", anti_crawler=True, proxy_url=""):
         try:
-            # 使用线程锁确保线程安全
             if  str(os.getenv("NOT_HEADLESS",False))=="True":
                 headless = False
             else:
@@ -69,12 +109,24 @@ class PlaywrightController:
 
             if self.system != "windows":
                 headless = True
-            if self.driver is None:
-                if sys.platform == "win32" :
-                    # 设置事件循环策略为WindowsSelectorEventLoopPolicy
-                    # asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-                    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-                self.driver = sync_playwright().start()
+            
+            # 使用线程本地存储，确保每个线程有独立的 playwright driver
+            thread_id = threading.current_thread().ident
+            
+            with PlaywrightController._global_lock:
+                # 检查当前线程是否已有 driver
+                if not hasattr(PlaywrightController._thread_local, 'driver') or \
+                   PlaywrightController._thread_local.driver is None:
+                    if sys.platform == "win32":
+                        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+                    PlaywrightController._thread_local.driver = sync_playwright().start()
+                    PlaywrightController._thread_ref_counts[thread_id] = 0
+                    print(f"Playwright driver 已为线程 {thread_id} 初始化")
+                
+                PlaywrightController._thread_ref_counts[thread_id] = \
+                    PlaywrightController._thread_ref_counts.get(thread_id, 0) + 1
+            
+            self.driver = PlaywrightController._thread_local.driver
         
             # 根据浏览器名称选择浏览器类型
             if browser_name.lower() == "firefox":
@@ -88,6 +140,11 @@ class PlaywrightController:
             launch_options = {
                 "headless": headless
             }
+
+            proxy_options = self._build_proxy_options(proxy_url)
+            if proxy_options:
+                print(f"浏览器代理已启用: {self._mask_proxy_url(proxy_url)}")
+                launch_options["proxy"] = proxy_options
             
             # 在Windows上添加额外的启动选项
             if self.system == "windows":
@@ -308,30 +365,55 @@ class PlaywrightController:
             # 析构函数中避免抛出异常
             pass
 
-    def open_url(self, url,wait_until="domcontentloaded"):
+    def open_url(self, url, wait_until="domcontentloaded", timeout_ms=30000):
         try:
-            self.page.goto(url,wait_until=wait_until)
+            self.page.goto(url, wait_until=wait_until, timeout=timeout_ms)
         except Exception as e:
-            raise Exception(f"打开URL失败: {str(e)}")
+            raise Exception(f"打开URL失败(超时{timeout_ms}ms): {str(e)}")
 
     def Close(self):
         self.cleanup()
 
     def cleanup(self):
-        """清理所有资源"""
-        try:
-            # 使用线程锁确保线程安全
-            if hasattr(self, 'page') and self.page:
-                self.page.close()
-            if hasattr(self, 'context') and self.context:
-                self.context.close()
-            if hasattr(self, 'browser') and self.browser:
-                self.browser.close()
-            if hasattr(self, 'playwright') and self.driver:
-                self.driver.stop()
-            self.isClose = True
-        except Exception as e:
-            print(f"资源清理失败: {str(e)}")
+        """清理所有资源 - 每个步骤独立捕获异常"""
+        errors = []
+        # 先清理实例级别的资源
+        for name, obj in [('page', self.page), ('context', self.context), 
+                           ('browser', self.browser)]:
+            if obj:
+                try:
+                    obj.close()
+                except Exception as e:
+                    errors.append(f"{name}: {e}")
+        
+        self.page = None
+        self.context = None
+        self.browser = None
+        self.isClose = True
+        
+        # 使用全局锁管理线程本地 driver 的生命周期
+        thread_id = threading.current_thread().ident
+        
+        with PlaywrightController._global_lock:
+            if thread_id in PlaywrightController._thread_ref_counts:
+                PlaywrightController._thread_ref_counts[thread_id] -= 1
+                
+                # 只有当该线程的引用计数归零时才真正停止 driver
+                if PlaywrightController._thread_ref_counts[thread_id] == 0:
+                    if hasattr(PlaywrightController._thread_local, 'driver') and \
+                       PlaywrightController._thread_local.driver is not None:
+                        try:
+                            PlaywrightController._thread_local.driver.stop()
+                            print(f"Playwright driver 已为线程 {thread_id} 停止")
+                        except Exception as e:
+                            errors.append(f"driver: {e}")
+                        finally:
+                            PlaywrightController._thread_local.driver = None
+                    del PlaywrightController._thread_ref_counts[thread_id]
+        
+        self.driver = None
+        if errors:
+            print(f"资源清理部分失败: {errors}")
 
     def dict_to_json(self, data_dict):
         try:

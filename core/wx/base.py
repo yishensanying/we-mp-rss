@@ -1,3 +1,4 @@
+import os
 import requests
 import json
 import re
@@ -76,7 +77,6 @@ class WxGather:
         self.get_token()
     def get_token(self):
         cfg.reload()
-        wx_cfg.reload()
         from driver.token import get as get_token_val
         self.Gather_Content=cfg.get('gather.content',False)
         self.cookies = get_token_val('cookie', '')
@@ -252,6 +252,10 @@ class WxGather:
     def Start(self,mp_id=None):
         self.articles=[]
         self.get_token()
+        from driver.success import getLockStatus
+        if getLockStatus():
+            self.Error("正在切换帐号码，请等待切换完成")
+            return
         if self.token=="" or self.token is None:
              self.Error("请先扫码登录公众号平台")
              return
@@ -278,8 +282,10 @@ class WxGather:
             setStatus(False)
             from core.queue import TaskQueue
             TaskQueue.clear_queue()
-            threading.Thread(target=send_wx_code,args=(f"公众号平台登录失效,请重新登录",)).start()
-            # send_wx_code(f"公众号平台登录失效,请重新登录")
+            import os
+            if str(os.getenv('WE_RSS.AUTH',False))!="True" and cfg.get("server.send_code")=="True":
+                threading.Thread(target=send_wx_code,args=(f"公众号平台登录失效,请重新登录",)).start()
+                send_wx_code(f"公众号平台登录失效,请重新登录")
             raise Exception(error)
         # raise Exception(error)
         print_error(error)

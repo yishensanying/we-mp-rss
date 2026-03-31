@@ -46,11 +46,51 @@ class PasswordHasher:
 pwd_context = PasswordHasher()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{API_BASE}/auth/token",auto_error=False)
 
-# 用户缓存字典
+# 用户缓存字典 (格式: {key: (user_data, timestamp)})
 _user_cache = {}
-# 登录失败次数记录
+# 登录失败次数记录 (格式: {username: (attempts, timestamp)})
 _login_attempts = {}
 MAX_LOGIN_ATTEMPTS = 5
+# 缓存过期时间配置
+_USER_CACHE_TTL = 3600  # 用户缓存1小时过期
+_LOGIN_ATTEMPTS_TTL = 1800  # 登录失败记录30分钟过期
+
+
+def _cleanup_expired_cache():
+    """清理过期的缓存数据"""
+    now = datetime.utcnow()
+    
+    # 清理过期的用户缓存
+    expired_users = [
+        k for k, v in _user_cache.items() 
+        if isinstance(v, tuple) and (now - v[1]).total_seconds() > _USER_CACHE_TTL
+    ]
+    for k in expired_users:
+        del _user_cache[k]
+    
+    # 清理过期的登录失败记录
+    expired_attempts = [
+        k for k, v in _login_attempts.items() 
+        if isinstance(v, tuple) and (now - v[1]).total_seconds() > _LOGIN_ATTEMPTS_TTL
+    ]
+    for k in expired_attempts:
+        del _login_attempts[k]
+
+
+def clear_user_cache(username: str = None):
+    """清除用户缓存
+    
+    Args:
+        username: 如果指定，只清除该用户的缓存；否则清除所有缓存
+    """
+    if username:
+        if username in _user_cache:
+            del _user_cache[username]
+        cache_key = f"id:{username}"
+        if cache_key in _user_cache:
+            del _user_cache[cache_key]
+    else:
+        _user_cache.clear()
 
 
 # ===== Access Key (AK) 认证相关功能 =====
@@ -78,65 +118,90 @@ def verify_secret_key(plain_secret: str, hashed_secret: str) -> bool:
 
 def get_login_attempts(username: str) -> int:
     """获取用户登录失败次数"""
-    return _login_attempts.get(username, 0)
+    # 先清理过期缓存
+    _cleanup_expired_cache()
+    
+    data = _login_attempts.get(username)
+    if isinstance(data, tuple):
+        return data[0]
+    return 0
 
 def get_user(username: str) -> Optional[dict]:
     """从数据库获取用户，带缓存功能"""
-    # 先检查缓存
+    # 先清理过期缓存
+    _cleanup_expired_cache()
+    
+    # 检查缓存是否存在且未过期
     if username in _user_cache:
-        return _user_cache[username]
+        data = _user_cache[username]
+        if isinstance(data, tuple):
+            user_data, cached_time = data
+            return user_data
 
-    session = DB.get_session()
+    session = None
     try:
+        session = DB.get_session()
         user = session.query(DBUser).filter(DBUser.username == username).first()
         if user:
-            # 转换为字典并存入缓存
+            # 转换为字典并存入缓存（带时间戳）
             user_dict = user.__dict__.copy()
             # 移除 SQLAlchemy 内部属性（如 _sa_instance_state）
             user_dict.pop('_sa_instance_state', None)
-            user_dict=User(**user_dict)
-            _user_cache[username] = user_dict
+            user_dict = User(**user_dict)
+            _user_cache[username] = (user_dict, datetime.utcnow())
             return user_dict
         return None
     except Exception as e:
         from core.print import print_error
         print_error(f"获取用户错误: {str(e)}")
         return None
+    finally:
+        if session is not None:
+            session.close()
 
 def get_user_by_id(user_id: str) -> Optional[dict]:
     """从数据库通过用户ID获取用户，带缓存功能"""
+    # 先清理过期缓存
+    _cleanup_expired_cache()
+    
     # 缓存键使用 id: 前缀
     cache_key = f"id:{user_id}"
     if cache_key in _user_cache:
-        return _user_cache[cache_key]
+        data = _user_cache[cache_key]
+        if isinstance(data, tuple):
+            user_data, cached_time = data
+            return user_data
 
-    session = DB.get_session()
+    session = None
     try:
+        session = DB.get_session()
         user = session.query(DBUser).filter(DBUser.id == user_id).first()
         if user:
-            # 转换为字典并存入缓存
+            # 转换为字典并存入缓存（带时间戳）
             user_dict = user.__dict__.copy()
             # 移除 SQLAlchemy 内部属性（如 _sa_instance_state）
             user_dict.pop('_sa_instance_state', None)
-            user_dict=User(**user_dict)
-            _user_cache[cache_key] = user_dict
+            user_dict = User(**user_dict)
+            _user_cache[cache_key] = (user_dict, datetime.utcnow())
             return user_dict
         return None
     except Exception as e:
         from core.print import print_error
         print_error(f"通过ID获取用户错误: {str(e)}")
         return None
-        
-def clear_user_cache(username: str):
-    """清除指定用户的缓存"""
-    if username in _user_cache:
-        del _user_cache[username]
+    finally:
+        if session is not None:
+            session.close()
 
 from apis.base import error_response
 def authenticate_user(username: str, password: str) -> Optional[DBUser]:
     """验证用户凭据"""
+    # 先清理过期缓存
+    _cleanup_expired_cache()
+    
     # 检查是否超过最大尝试次数
-    if _login_attempts.get(username, 0) >= MAX_LOGIN_ATTEMPTS:
+    attempts = get_login_attempts(username)
+    if attempts >= MAX_LOGIN_ATTEMPTS:
         raise HTTPException(
             status_code=status.HTTP_202_ACCEPTED,
             detail=error_response(
@@ -148,9 +213,10 @@ def authenticate_user(username: str, password: str) -> Optional[DBUser]:
     user = get_user(username)
 
     if not user or not pwd_context.verify(password, user.password_hash):
-        # 增加失败次数
-        _login_attempts[username] = _login_attempts.get(username, 0) + 1
-        remaining_attempts = MAX_LOGIN_ATTEMPTS - _login_attempts[username]
+        # 增加失败次数（带时间戳）
+        current_attempts = get_login_attempts(username)
+        _login_attempts[username] = (current_attempts + 1, datetime.utcnow())
+        remaining_attempts = MAX_LOGIN_ATTEMPTS - (current_attempts + 1)
         raise HTTPException(
             status_code=status.HTTP_202_ACCEPTED,
             detail=error_response(
@@ -236,8 +302,9 @@ def create_ak(
     """
     from uuid import uuid4
     
-    session = DB.get_session()
+    session = None
     try:
+        session = DB.get_session()
         access_key, secret_key = generate_access_key()
         hashed_secret = hash_secret_key(secret_key)
         
@@ -275,7 +342,8 @@ def create_ak(
             "expires_at": ak.expires_at.isoformat() if ak.expires_at else None
         }
     except Exception as e:
-        session.rollback()
+        if session:
+            session.rollback()
         from core.print import print_error
         print_error(f"创建Access Key错误: {str(e)}")
         raise HTTPException(
@@ -283,13 +351,15 @@ def create_ak(
             detail="创建Access Key失败"
         )
     finally:
-        session.close()
+        if session is not None:
+            session.close()
 
 
 def get_ak_by_key(access_key: str) -> Optional[AccessKey]:
     """通过 AK 值获取 AK 记录"""
-    session = DB.get_session()
+    session = None
     try:
+        session = DB.get_session()
         ak = session.query(AccessKey).filter(
             AccessKey.key == access_key,
             AccessKey.is_active == True
@@ -300,7 +370,8 @@ def get_ak_by_key(access_key: str) -> Optional[AccessKey]:
         print_error(f"获取Access Key错误: {str(e)}")
         return None
     finally:
-        session.close()
+        if session is not None:
+            session.close()
 
 
 def authenticate_ak(access_key: str, secret_key: str) -> Optional[dict]:
@@ -328,16 +399,19 @@ def authenticate_ak(access_key: str, secret_key: str) -> Optional[dict]:
         return None
     
     # 更新最后使用时间
-    session = DB.get_session()
+    session = None
     try:
+        session = DB.get_session()
         ak_record = session.query(AccessKey).filter(AccessKey.id == ak.id).first()
         if ak_record:
             ak_record.last_used_at = datetime.utcnow()
             session.commit()
     except:
-        session.rollback()
+        if session:
+            session.rollback()
     finally:
-        session.close()
+        if session is not None:
+            session.close()
     
     # 解析权限
     try:
@@ -409,8 +483,9 @@ async def get_current_user_or_ak(request: Request, token: str = Depends(oauth2_s
 
 def list_user_aks(user_id: str) -> list:
     """获取用户的所有 Access Keys"""
-    session = DB.get_session()
+    session = None
     try:
+        session = DB.get_session()
         aks = session.query(AccessKey).filter(
             AccessKey.user_id == user_id
         ).all()
@@ -443,13 +518,15 @@ def list_user_aks(user_id: str) -> list:
         print_error(f"获取用户Access Keys错误: {str(e)}")
         return []
     finally:
-        session.close()
+        if session is not None:
+            session.close()
 
 
 def deactivate_ak(ak_id: str) -> bool:
     """停用 Access Key"""
-    session = DB.get_session()
+    session = None
     try:
+        session = DB.get_session()
         ak = session.query(AccessKey).filter(AccessKey.id == ak_id).first()
         if ak:
             ak.is_active = False
@@ -457,18 +534,21 @@ def deactivate_ak(ak_id: str) -> bool:
             return True
         return False
     except Exception as e:
-        session.rollback()
+        if session:
+            session.rollback()
         from core.print import print_error
         print_error(f"停用Access Key错误: {str(e)}")
         return False
     finally:
-        session.close()
+        if session is not None:
+            session.close()
 
 
 def delete_ak(ak_id: str) -> bool:
     """删除 Access Key"""
-    session = DB.get_session()
+    session = None
     try:
+        session = DB.get_session()
         ak = session.query(AccessKey).filter(AccessKey.id == ak_id).first()
         if ak:
             session.delete(ak)
@@ -476,18 +556,21 @@ def delete_ak(ak_id: str) -> bool:
             return True
         return False
     except Exception as e:
-        session.rollback()
+        if session:
+            session.rollback()
         from core.print import print_error
         print_error(f"删除Access Key错误: {str(e)}")
         return False
     finally:
-        session.close()
+        if session is not None:
+            session.close()
 
 
 def update_ak(ak_id: str, **kwargs) -> bool:
     """更新 Access Key 信息"""
-    session = DB.get_session()
+    session = None
     try:
+        session = DB.get_session()
         ak = session.query(AccessKey).filter(AccessKey.id == ak_id).first()
         if not ak:
             return False
@@ -504,12 +587,11 @@ def update_ak(ak_id: str, **kwargs) -> bool:
         session.commit()
         return True
     except Exception as e:
-        session.rollback()
+        if session:
+            session.rollback()
         from core.print import print_error
         print_error(f"更新Access Key错误: {str(e)}")
         return False
     finally:
-        session.close()
-
-
-
+        if session is not None:
+            session.close()

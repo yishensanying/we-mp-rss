@@ -14,6 +14,7 @@ from core.lax.template_parser import TemplateParser
 from views.config import base
 from driver.wxarticle import Web
 from core.cache import cache_view, clear_cache_pattern, data_cache
+from sqlalchemy.orm import defer
 
 
 
@@ -21,7 +22,6 @@ from core.cache import cache_view, clear_cache_pattern, data_cache
 router = APIRouter(tags=["文章"])
 
 @router.get("/articles", response_class=HTMLResponse, summary="文章列表页")
-@cache_view("articles_list", ttl=1800)  # 缓存30分钟
 async def articles_view(
     request: Request,
     page: int = Query(1, ge=1, description="页码"),
@@ -63,9 +63,12 @@ async def articles_view(
         else:  # created_at
             order_clause = Article.created_at.desc() if order == "desc" else Article.created_at.asc()
         
-        # 主查询：一次性获取文章和Feed信息
+        # 主查询：一次性获取文章和Feed信息（排除大字段 content 和 content_html）
         query = session.query(Article, Feed).join(
             Feed, Article.mp_id == Feed.id, isouter=True
+        ).options(
+            defer(Article.content),      # type: ignore
+            defer(Article.content_html)  # type: ignore
         ).filter(and_(*base_conditions)).order_by(order_clause)
         
         # 获取总数
@@ -154,6 +157,26 @@ async def articles_view(
             "mp_id": mp_id,
         } if feed_info else {}
         
+        # 构建分页URL辅助函数
+        def build_page_url(page_num: int) -> str:
+            params = []
+            if mp_id:
+                params.append(f"mp_id={mp_id}")
+            if tag_id:
+                params.append(f"tag_id={tag_id}")
+            if keyword:
+                params.append(f"keyword={keyword}")
+            if sort != "publish_time":
+                params.append(f"sort={sort}")
+            if order != "desc":
+                params.append(f"order={order}")
+            params.append(f"page={page_num}")
+            params.append(f"limit={limit}")
+            return "/views/articles?" + "&".join(params)
+        
+        prev_url = build_page_url(prev_page) if has_prev else None
+        next_url = build_page_url(next_page) if has_next else None
+        
         parser = TemplateParser(template_content, template_dir=base.public_dir)
         html_content = parser.render({
             "site": base.site,
@@ -166,7 +189,8 @@ async def articles_view(
             "has_next": has_next,
             "prev_page": prev_page,
             "next_page": next_page,
-            "base_url": "/views/articles?mp_id={mp_id}&tag_id={tag_id}",
+            "prev_url": prev_url,
+            "next_url": next_url,
             "filter_info": filter_info,
             "tag_options": tag_options,
             "mp_options": mp_options,

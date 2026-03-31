@@ -87,9 +87,10 @@ def content_extract(url):
     return ""
 #通过公众号接口获取公众号文章列表
 def get_Articles(faker_id:str):
+    from driver.token import get as get_val
     headers = {
-        "Cookie": wx_cfg.get("cookie"),
-        "User-Agent": wx_cfg.get("user_agent")
+        "Cookie": get_val("cookie"),
+        "User-Agent": get_val("user_agent")
     }
     params = {
         "sub": "list",
@@ -97,15 +98,15 @@ def get_Articles(faker_id:str):
         "begin": 0,
         "count": cfg.get("count"),
         "fakeid": faker_id,
-        "token": wx_cfg.get("token"),
+        "token":get_val("token"),
         "lang": "zh_CN",
         "f": "json",
         "ajax": 1
     }
     url = "https://mp.weixin.qq.com/cgi-bin/appmsgpublish"
     headers = {
-        "Cookie": wx_cfg.get("cookie"),
-        "User-Agent": wx_cfg.get("user_agent")
+        "Cookie":get_val("cookie"),
+        "User-Agent": get_val("user_agent")
     }
     data={}
     try:

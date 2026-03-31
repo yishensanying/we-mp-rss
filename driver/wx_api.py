@@ -24,6 +24,7 @@ from sqlalchemy import true
 
 from core.print import print_warning,print_success
 from .token import get as get_token,set_token
+import psutil
 import logging
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -386,12 +387,16 @@ class WeChatAPI:
                     self._handle_login_success()
                 elif status == 'waiting':
                     # 继续等待
-                    Timer(2.0, check_login).start()
+                    timer = Timer(2.0, check_login)
+                    timer.daemon = True  # 设置为守护线程，避免内存泄漏
+                    timer.start()
                 elif status == 'scanned':
                     # 已扫描，等待确认
                     if self.notice_callback:
                         self.notice_callback('已扫描，请在手机上确认登录')
-                    Timer(2.0, check_login).start()
+                    timer = Timer(2.0, check_login)
+                    timer.daemon = True  # 设置为守护线程，避免内存泄漏
+                    timer.start()
                 elif status == 'expired':
                     # 二维码过期
                     if self.notice_callback:
@@ -401,7 +406,9 @@ class WeChatAPI:
                     return
                 else:
                     # 继续检查
-                    Timer(2.0, check_login).start()
+                    timer = Timer(2.0, check_login)
+                    timer.daemon = True  # 设置为守护线程，避免内存泄漏
+                    timer.start()
                     
             except Exception as e:
                 logger.error(f"检查登录状态失败: {str(e)}")
@@ -411,7 +418,9 @@ class WeChatAPI:
             finally:
                 self.release_lock()
         # 启动检查
-        Timer(2.0, check_login).start()
+        timer = Timer(2.0, check_login)
+        timer.daemon = True  # 设置为守护线程，避免内存泄漏
+        timer.start()
 
     def _check_login_status(self, uuid: str) -> str:
         """
@@ -903,24 +912,42 @@ class WeChatAPI:
         if os.path.exists(self.wx_login_url):
             return True
         return False
-    def check_lock(self):
-        """检查锁定状态"""
-        time.sleep(1)
-        return os.path.exists(self.lock_file_path) or self.GetHasCode()
+    def check_lock(self, timeout: int = 300) -> bool:
+        if not os.path.exists(self.wx_login_url):
+                return False
+        return True
     def set_lock(self):
-        """创建锁定文件"""
+        """创建锁定文件，写入当前进程PID和时间戳"""
+        os.makedirs(os.path.dirname(self.lock_file_path), exist_ok=True)
+        current_pid = os.getpid()
         with open(self.lock_file_path, 'w') as f:
-            f.write(str(time.time()))
+            f.write(f"{current_pid}|{time.time()}")
         self.isLOCK = True
         
     def release_lock(self):
         """删除锁定文件"""
         try:
-            os.remove(self.lock_file_path)
+            # 只释放当前进程持有的锁
+            if os.path.exists(self.lock_file_path):
+                with open(self.lock_file_path, 'r') as f:
+                    content = f.read().strip()
+                parts = content.split('|')
+                if parts and int(parts[0]) == os.getpid():
+                    os.remove(self.lock_file_path)
             self.isLOCK = False
             return True
-        except:
+        except Exception:
             return False
+    
+    def _force_release_lock(self):
+        """强制释放锁（用于清理过期或损坏的锁）"""
+        try:
+            if os.path.exists(self.lock_file_path):
+                os.remove(self.lock_file_path)
+        except Exception:
+            pass
+    def QrStatus(self):
+        return {"login_status":self.HasLogin(),"qr_code":self.GetHasCode()}
     def HasLogin(self):
         return self._islogin and not self.GetHasCode()
     def Close(self):

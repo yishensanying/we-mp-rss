@@ -21,15 +21,15 @@ async def get_system_info(
 ) -> Dict[str, Any]:
     """获取精简后的系统信息，主要用于前端判断登录与授权状态。"""
     try:
-        wx_cfg.reload()
+        from driver.token import get as get_val
         system_info = {
             "api_version": API_VERSION,
             "core_version": CORE_VERSION,
             "uptime": round(time.time() - _START_TIME, 2),
             "wx": {
-                "token": wx_cfg.get("token", ""),
-                "expiry_time": wx_cfg.get("expiry.expiry_time", "") if getStatus() else "",
-                "info": getLoginInfo(),
+                'token':get_val('token',''),
+                'expiry_time':get_val('expiry.expiry_time','') if getStatus() else "",
+                "info":getLoginInfo(),
                 "login": getStatus(),
             },
             "queue": TaskQueue.get_queue_info(),
