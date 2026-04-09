@@ -50,6 +50,12 @@
                 登录
               </a-button>
             </a-form-item>
+            
+            <a-form-item>
+              <div class="login-extra">
+                <a-link @click="goToForgotPassword">忘记密码？</a-link>
+              </div>
+            </a-form-item>
           </a-form>
         </a-card>
       </div>
@@ -57,11 +63,7 @@
     <div class="login-footer">
       <div class="copyright">Design By Rachel</div>
       <div class="footer-links">
-        <a-link href="https://github.com/rachelos/we-mp-rss" target="_blank">GitHub</a-link>
-        <span class="divider">|</span>
-        <a-link href="https://gitee.com/rachel_os/we-mp-rss" target="_blank">Gitee</a-link>
-        <span class="divider">|</span>
-        <a-link href="/api/docs" target="_blank">Docs</a-link>
+        <a-link href="/api/docs" target="_blank">API 文档</a-link>
       </div>
     </div>
   </div>
@@ -120,6 +122,10 @@ const handleSubmit = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const goToForgotPassword = () => {
+  router.push('/forgot-password')
 }
 </script>
 
@@ -370,6 +376,20 @@ const handleSubmit = async () => {
 :deep(.arco-form-item-error .arco-input-wrapper) {
   border-color: #e53e3e;
   background-color: #fff5f5;
+}
+
+.login-extra {
+  width: 100%;
+  text-align: right;
+}
+
+.login-extra :deep(.arco-link) {
+  color: #4299e1;
+  font-size: 14px;
+}
+
+.login-extra :deep(.arco-link:hover) {
+  color: #3182ce;
 }
 
 :deep(.arco-form-message) {

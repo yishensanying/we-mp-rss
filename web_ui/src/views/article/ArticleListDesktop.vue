@@ -1,5 +1,5 @@
 <template>
-  <a-spin :loading="fullLoading" tip="正在刷新..." size="large">
+  <a-spin :loading="fullLoading" tip="正在刷新..." size="large" style="width: 100%; height: 100%;">
     <a-layout class="article-list">
       
       <a-layout-sider :width="300"
@@ -7,11 +7,16 @@
         <a-card :bordered="false" title="公众号"
           :headStyle="{ padding: '12px 16px', borderBottom: '1px solid #eee', background: '#fff', zIndex: 1, border: 0 }">
           <template #extra>
-          <a-button type="primary" @click="showAddModal">
-            <template #icon><icon-plus /></template>
-            添加订阅公众号
-          </a-button>
-                <a-doption @click="showAddFeaturedArticleModal"><template #icon><icon-link /></template>添加精选文章</a-doption>
+            <a-space>
+              <a-button type="primary" @click="showAddModal">
+                <template #icon><icon-plus /></template>
+                订阅公众号
+              </a-button>
+              <a-button @click="showAddFeaturedArticleModal">
+                <template #icon><icon-link /></template>
+                添加精选文章
+              </a-button>
+            </a-space>
           </template>
           <div style="display: flex; flex-direction: column;; background: #fff">
             <div style="margin-bottom: 12px;">
@@ -64,7 +69,7 @@
         </a-card>
       </a-layout-sider>
 
-      <a-layout-content :style="{ padding: '20px', width: '100%' }">
+      <a-layout-content style="padding: 20px;">
         <a-page-header :title="activeFeed ? activeFeed.name : '全部'" :subtitle="'管理您的公众号订阅内容'" :show-back="false">
           <template #extra>
             <a-space>
@@ -115,8 +120,27 @@
             <a-input-search class="search-input" v-model="searchText" placeholder="搜索文章标题" @search="handleSearch" @keyup.enter="handleSearch"
               allow-clear />
             <a-checkbox class="favorite-filter" :model-value="onlyFavorite" @change="handleFavoriteFilterChange">仅显示已收藏</a-checkbox>
+            <a-dropdown trigger="click" position="bl">
+              <a-button size="small">
+                <template #icon><icon-settings /></template>
+                列设置
+              </a-button>
+              <template #content>
+                <a-doption v-for="col in allColumnOptions" :key="col.key" @click.stop>
+                  <a-checkbox 
+                    :model-value="visibleColumns.includes(col.key)" 
+                    @change="(val) => toggleColumn(col.key, val)"
+                    :disabled="col.required"
+                  >
+                    {{ col.label }}
+                  </a-checkbox>
+                </a-doption>
+              </template>
+            </a-dropdown>
           </div>
-          <a-table :columns="columns" :data="articles" :loading="loading" :pagination="pagination" :row-selection="{
+          <a-table :columns="columns" :data="articles" :loading="loading" :pagination="pagination"
+            :scroll="{ x: '100%' }"
+            :row-selection="{
             type: 'checkbox',
             showCheckedAll: true,
             width: 50,
@@ -212,11 +236,10 @@
 <script setup lang="ts">
 import { Avatar } from '@/utils/constants'
 import { translatePage, setCurrentLanguage } from '@/utils/translate';
-import { ref, onMounted, h, nextTick, watch, computed } from 'vue'
+import { ref, onMounted, h, nextTick, watch, computed, resolveComponent } from 'vue'
 import axios from 'axios'
-import { IconApps, IconAtt, IconDelete, IconEdit, IconEye, IconRefresh, IconScan, IconWeiboCircleFill, IconWifi, IconCode, IconCheck, IconClose, IconStop, IconPlayArrow, IconCopy, IconPlus, IconDown, IconExport, IconImport, IconShareExternal } from '@arco-design/web-vue/es/icon'
+import { IconCheck, IconClose } from '@arco-design/web-vue/es/icon'
 import { getArticles, deleteArticle as deleteArticleApi, ClearArticle, ClearDuplicateArticle, getArticleDetail, getRefreshArticleTaskStatus, refreshArticle as refreshArticleApi, toggleArticleFavoriteStatus, toggleArticleReadStatus } from '@/api/article'
-// 导出 / 导入相关 API 已移除
 import { addFeaturedArticle, getFeaturedArticleTaskStatus, getSubscriptions, UpdateMps, toggleMpStatus as toggleMpStatusApi } from '@/api/subscription'
 import { inject } from 'vue'
 import { Message, Modal } from '@arco-design/web-vue'
@@ -273,93 +296,256 @@ const statusColorMap = {
   deleted: 'red'
 }
 
-const columns = [
-  {
-    title: '已阅',
-    dataIndex: 'is_read',
-    width: '100',
-    render: ({ record }) => {
-      const isRead = record.is_read === 1;
-      return h('div', { 
-        style: { 
-          display: 'flex', 
-          alignItems: 'center', 
-          cursor: 'pointer',
-          color: isRead ? 'var(--color-success)' : 'var(--color-text-3)'
-        },
-        onClick: () => toggleReadStatus(record)
-      }, [
-        h(isRead ? IconCheck : IconClose, { 
-          style: { marginRight: '4px' } 
-        }),
-        h('span', { 
-          style: { fontSize: '12px' } 
-        }, isRead ? '已读' : '未读')
-      ]);
-    }
-  },
-  {
-    title: '文章标题',
-    dataIndex: 'title',
-    width: window.innerWidth - 1100,
-    ellipsis: true,
-    render: ({ record }) => h('a', {
-      href: issourceUrl.value ? record.url || '#' : "/views/article/" + record.id,
-      title: record.title,
-      target: '_blank',
-      style: { 
-        color: 'var(--color-text-1)',
-        textDecoration: record.is_read === 1 ? 'line-through' : 'none',
-        opacity: record.is_read === 1 ? 0.7 : 1
-      }
-    }, record.title)
-  },
-  {
-    title: '公众号',
-    dataIndex: 'mp_id',
-    width: '120',
-    ellipsis: true,
-    render: ({ record }) => {
-      const mp = mpList.value.find(item => item.id === record.mp_id);
-      return h('a', {
-        style: {
-          color: 'var(--color-link)',
-          cursor: 'pointer',
-          textDecoration: 'none'
-        },
-        onClick: (e: MouseEvent) => {
-          e.preventDefault()
-          handleMpClick(record.mp_id)
-        }
-      }, record.mp_name || mp?.name || record.mp_id)
-    }
-  },
-  {
-    title: '更新时间',
-    dataIndex: 'created_at',
-    width: '140',
-    render: ({ record }) => h('span',
-      { style: { color: 'var(--color-text-3)', fontSize: '12px' } },
-      formatDateTime(record.created_at)
-    )
-  },
-  {
-    title: '发布时间',
-    dataIndex: 'publish_time',
-    width: '140',
-    render: ({ record }) => h('span',
-      { style: { color: 'rgb(var(--color-text-3))', fontSize: '12px' } },
-      formatTimestamp(record.publish_time)
-    )
-  },
-  {
-    title: '操作',
-    dataIndex: 'actions',
-    width: 180,
-    align: 'center',
-    slotName: 'actions'
-  }
+// 原创状态映射
+const copyrightTextMap: Record<number, string> = {
+  0: '否',
+  1: '是',
+  11: '是',
+  12: '是',
+  13: '是',
+  14: '是'
+}
+
+const copyrightColorMap: Record<number, string> = {
+  0: 'gray',
+  1: 'green',
+  11: 'purple',
+  12: 'orange',
+  13: 'red',
+  14: 'cyan'
+}
+
+// 展示类型映射
+const itemShowTypeTextMap: Record<number, string> = {
+  0: '图文',
+  1: '图片',
+  2: '音频',
+  3: '视频',
+  10: '纯文字',
+  11: '文字+图片'
+}
+
+const itemShowTypeColorMap: Record<number, string> = {
+  0: 'green',
+  1: 'purple',
+  2: 'orange',
+  3: 'red',
+  10: 'gray',
+  11: 'cyan'
+}
+
+// 发布类型映射
+const publishTypeTextMap: Record<number, string> = {
+  1: '发布',
+  2: '转载',
+  3: '草稿'
+}
+
+const publishTypeColorMap: Record<number, string> = {
+  1: 'green',
+  2: 'blue',
+  3: 'orange'
+}
+
+// 列配置选项
+const allColumnOptions = [
+  { key: 'is_read', label: '已阅', required: true },
+  { key: 'pic_url', label: '题图', required: false },
+  { key: 'title', label: '文章标题', required: true },
+  { key: 'mp_id', label: '公众号', required: false },
+  { key: 'copyright_stat', label: '原创', required: false },
+  { key: 'item_show_types', label: '类型', required: false },
+  { key: 'created_at', label: '更新时间', required: false },
+  { key: 'publish_time', label: '发布时间', required: false },
+  { key: 'actions', label: '操作', required: true }
 ]
+
+// 默认显示的列
+const defaultVisibleColumns = ['is_read', 'pic_url', 'title', 'mp_id', 'created_at', 'publish_time', 'actions']
+
+// 从 localStorage 读取列配置
+const getStoredColumns = (): string[] => {
+  try {
+    const stored = localStorage.getItem('articleListVisibleColumns')
+    if (stored) {
+      return JSON.parse(stored)
+    }
+  } catch {}
+  return defaultVisibleColumns
+}
+
+const visibleColumns = ref<string[]>(getStoredColumns())
+
+// 切换列显示状态
+const toggleColumn = (key: string, checked: boolean) => {
+  const option = allColumnOptions.find(o => o.key === key)
+  if (option?.required) return
+  
+  if (checked) {
+    if (!visibleColumns.value.includes(key)) {
+      visibleColumns.value = [...visibleColumns.value, key]
+    }
+  } else {
+    visibleColumns.value = visibleColumns.value.filter(k => k !== key)
+  }
+  localStorage.setItem('articleListVisibleColumns', JSON.stringify(visibleColumns.value))
+}
+
+// 计算动态宽度 - 不再需要，标题列自适应
+// const getDynamicTitleWidth = () => { ... }
+
+const columns = computed(() => {
+  const allColumns = [
+    {
+      title: '已阅',
+      dataIndex: 'is_read',
+      width: 60,
+      render: ({ record }) => {
+        const isRead = record.is_read === 1;
+        return h('div', {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            color: isRead ? '#52c41a' : 'var(--color-text-3)'
+          },
+          onClick: () => toggleReadStatus(record)
+        }, [
+          h(isRead ? IconCheck : IconClose, {
+            style: { marginRight: '2px' }
+          }),
+          h('span', {
+            style: { fontSize: '12px' }
+          }, isRead ? '' : '')
+        ]);
+      }
+    },
+    {
+      title: '题图',
+      dataIndex: 'pic_url',
+      width: 80,
+      align: 'center',
+      render: ({ record }) => {
+        if (!record.pic_url) return h('span', { style: { color: 'var(--color-text-4)' } }, '-')
+        const Popover = resolveComponent('a-popover')
+        return h(Popover, {
+          trigger: 'hover',
+          position: 'right',
+          'content-style': { padding: '4px' }
+        }, {
+          default: () => h('img', {
+            src: record.pic_url,
+            style: {
+              width: '60px',
+              height: '40px',
+              objectFit: 'cover',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            },
+            onClick: () => viewArticle(record)
+          }),
+          content: () => h('img', {
+            src: record.pic_url,
+            style: {
+              maxWidth: '300px',
+              maxHeight: '200px',
+              borderRadius: '4px'
+            }
+          })
+        })
+      }
+    },
+    {
+      title: '文章标题',
+      dataIndex: 'title',
+      ellipsis: true,
+      render: ({ record }) => h('a', {
+        href: issourceUrl.value ? record.url || '#' : "/views/article/" + record.id,
+        title: record.title,
+        target: '_blank',
+        style: {
+          color: 'var(--color-text-1)',
+          textDecoration: 'none'
+        }
+      }, record.title)
+    },
+    {
+      title: '公众号',
+      dataIndex: 'mp_id',
+      width: 90,
+      ellipsis: true,
+      render: ({ record }) => {
+        const mp = mpList.value.find(item => item.id === record.mp_id);
+        return h('a', {
+          style: {
+            color: 'var(--color-link)',
+            cursor: 'pointer',
+            textDecoration: 'none'
+          },
+          onClick: (e: MouseEvent) => {
+            e.preventDefault()
+            handleMpClick(record.mp_id)
+          }
+        }, record.mp_name || mp?.name || record.mp_id)
+      }
+    },
+    {
+      title: '原创',
+      dataIndex: 'copyright_stat',
+      width: 60,
+      align: 'center',
+      render: ({ record }) => {
+        const stat = record.copyright_stat ?? 0
+        return h('a-tag', {
+          color: copyrightColorMap[stat] ,
+          size: 'small'
+        }, copyrightTextMap[stat] || '未知')
+      }
+    },
+    {
+      title: '类型',
+      dataIndex: 'item_show_types',
+      width: 60,
+      align: 'center',
+      render: ({ record }) => {
+        const showType = record.item_show_types ?? 0
+        return h('a-tag', {
+          color: itemShowTypeColorMap[showType] || 'gray',
+          size: 'small'
+        }, itemShowTypeTextMap[showType] || '图文')
+      }
+    },
+    {
+      title: '更新时间',
+      dataIndex: 'created_at',
+      width: 130,
+      render: ({ record }) => h('span',
+        { style: { color: 'var(--color-text-3)', fontSize: '12px' } },
+        formatDateTime(record.created_at)
+      )
+    },
+    {
+      title: '发布时间',
+      dataIndex: 'publish_time',
+      width: 130,
+      render: ({ record }) => h('span',
+        { style: { color: 'rgb(var(--color-text-3))', fontSize: '12px' } },
+        formatTimestamp(record.publish_time)
+      )
+    },
+    {
+      title: '操作',
+      dataIndex: 'actions',
+      width: 140,
+      align: 'center',
+      fixed: 'right',
+      slotName: 'actions'
+    }
+  ]
+
+  return allColumns.filter(col => visibleColumns.value.includes(col.dataIndex as string))
+})
 
 const handleMpPageChange = (page: number, pageSize: number) => {
   mpPagination.value.current = page
@@ -377,7 +563,6 @@ watch(mpFilterType, () => {
   mpPagination.value.current = 1
   fetchMpList()
 })
-// RSS 订阅功能已移除
 const activeFeed = ref({
   id: "",
   name: "全部",
@@ -523,8 +708,6 @@ const showAuthQrcode = inject('showAuthQrcode') as () => void
 const handleAuthClick = () => {
   showAuthQrcode()
 }
-
-// 导入 / 导出 / RSS 订阅相关逻辑已移除
 
 const resetScrollPosition = () => {
   window.scrollTo({
@@ -850,46 +1033,6 @@ const toggleMpStatus = async (mpId: string, newStatus: number) => {
   }
 }
 
-const importArticles = () => {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json';
-  input.onchange = async (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-
-    try {
-      const content = await file.text();
-      const data = JSON.parse(content);
-      // 这里应该调用API导入数据
-      Message.success(`成功导入${data.length}篇文章`);
-    } catch (error) {
-      console.error('导入文章失败:', error);
-      Message.error('导入失败，请检查文件格式');
-    }
-  };
-  input.click();
-};
-
-const exportArticles = () => {
-  if (!articles.value.length) {
-    Message.warning('没有文章可导出');
-    return;
-  }
-
-  const data = JSON.stringify(articles.value, null, 2);
-  const blob = new Blob([data], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `articles_${activeMpId.value || 'all'}_${new Date().toISOString().slice(0, 10)}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  Message.success('导出成功');
-};
-
 // 创建 Shadow DOM 隔离容器
 const createShadowHost = () => {
   if (!shadowContainer.value) return;
@@ -986,11 +1129,27 @@ const toggleFavoriteStatus = async (record: any) => {
 
 <style scoped>
 .article-list {
-  /* height: calc(100vh - 186px); */
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
-.a-layout-sider {
+.article-list :deep(.arco-layout) {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.article-list :deep(.arco-layout-sider) {
+  flex-shrink: 0;
   overflow: hidden;
+}
+
+.article-list :deep(.arco-layout-content) {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  box-sizing: border-box;
 }
 
 .a-list-item {
@@ -1040,6 +1199,35 @@ const toggleFavoriteStatus = async (record: any) => {
   justify-content: center;
 }
 
+:deep(.arco-table) {
+  width: 100% !important;
+}
+
+:deep(.arco-table-container) {
+  width: 100% !important;
+  overflow-x: auto;
+}
+
+:deep(.arco-table-content) {
+  overflow-x: auto;
+}
+
+:deep(.arco-table-element) {
+  width: 100% !important;
+  table-layout: auto !important;
+}
+
+:deep(.arco-card) {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 确保内部表格容器正确 */
+:deep(.arco-card-body) {
+  width: 100%;
+  overflow: hidden;
+}
+
 .arco-drawer-body img {
   max-width: 100vw !important;
   margin: 0 auto !important;
@@ -1057,6 +1245,17 @@ const toggleFavoriteStatus = async (record: any) => {
 
 :deep(.arco-dropdown-open .arco-icon-down) {
   transform: rotate(180deg);
+}
+
+/* 题图预览 tooltip 样式 */
+:deep(.image-preview-tooltip) {
+  padding: 4px !important;
+  background: transparent !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+:deep(.arco-tooltip-content) {
+  background: transparent !important;
 }
 
 </style>

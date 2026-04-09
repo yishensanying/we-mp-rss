@@ -14,6 +14,36 @@ import json
 router = APIRouter(prefix="/filter-rules", tags=["过滤规则管理"])
 
 
+def _parse_rule_mp_ids(raw_mp_id: Optional[str]) -> List[str]:
+    """将规则里的 mp_id 字段统一解析成公众号 ID 列表。"""
+    if not raw_mp_id:
+        return []
+    text = str(raw_mp_id).strip()
+    if not text:
+        return []
+    try:
+        if text.startswith("["):
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+            if parsed is None:
+                return []
+            return [str(parsed).strip()]
+    except Exception:
+        pass
+    return [text]
+
+
+def _rule_matches_mp(rule_mp_ids: List[str], target_mp_id: str, include_global: bool = True) -> bool:
+    """判断规则是否匹配目标公众号。"""
+    mp_id = (target_mp_id or "").strip()
+    if not mp_id:
+        return True
+    if not rule_mp_ids:
+        return include_global
+    return mp_id in rule_mp_ids
+
+
 class FilterRuleCreate(BaseModel):
     mp_id: str  # JSON字符串，存储多个公众号ID数组
     rule_name: str
@@ -27,6 +57,7 @@ class FilterRuleCreate(BaseModel):
 
 
 class FilterRuleUpdate(BaseModel):
+    mp_id: Optional[str] = None  # JSON 数组字符串，空数组表示全部公众号
     rule_name: Optional[str] = None
     remove_ids: Optional[List[str]] = None
     remove_classes: Optional[List[str]] = None
@@ -48,24 +79,17 @@ async def get_filter_rules(
 ):
     """获取过滤规则列表，支持按公众号筛选"""
     try:
-        query = db.query(FilterRule)
-        if mp_id:
-            query = query.filter(FilterRule.mp_id == mp_id)
+        target_mp_id = (mp_id or "").strip()
+        all_rules = db.query(FilterRule).order_by(
+            FilterRule.priority.desc(),
+            FilterRule.created_at.desc()
+        ).all()
 
-        total = query.count()
-        rules = query.order_by(FilterRule.priority.desc(), FilterRule.created_at.desc()).limit(limit).offset(offset).all()
-
-        rules_list = []
-        for rule in rules:
-            # 解析 mp_id JSON 字符串为数组
-            mp_ids = []
-            try:
-                if rule.mp_id:
-                    mp_ids = json.loads(rule.mp_id) if rule.mp_id.startswith('[') else [rule.mp_id]
-            except:
-                mp_ids = [rule.mp_id] if rule.mp_id else []
-
-            rules_list.append({
+        parsed_rules = []
+        for rule in all_rules:
+            mp_ids = _parse_rule_mp_ids(rule.mp_id)
+            if _rule_matches_mp(mp_ids, target_mp_id, include_global=True):
+                parsed_rules.append({
                 "id": rule.id,
                 "mp_id": rule.mp_id,
                 "mp_ids": mp_ids,
@@ -82,6 +106,9 @@ async def get_filter_rules(
                 "created_at": rule.created_at.isoformat() if rule.created_at else None,
                 "updated_at": rule.updated_at.isoformat() if rule.updated_at else None
             })
+
+        total = len(parsed_rules)
+        rules_list = parsed_rules[offset: offset + limit]
 
         return success_response(data={
             "list": rules_list,

@@ -6,14 +6,13 @@ import ChangePassword from '../views/ChangePassword.vue'
 import EditUser from '../views/EditUser.vue'
 import AddSubscription from '../views/AddSubscription.vue'
 import WeChatMpManagement from '../views/WeChatMpManagement.vue'
-import ConfigList from '../views/ConfigList.vue'
-import ConfigDetail from '../views/ConfigDetail.vue'
 import MessageTaskList from '../views/MessageTaskList.vue'
 import MessageTaskForm from '../views/MessageTaskForm.vue'
 import NovelReader from '../views/NovelReader.vue'
 import FilterRuleList from '../views/FilterRuleList.vue'
 import FilterRuleForm from '../views/FilterRuleForm.vue'
 import TaskQueueView from '../views/TaskQueueView.vue'
+import ForgotPassword from '../views/ForgotPassword.vue'
 
 const routes = [
   {
@@ -92,15 +91,6 @@ const routes = [
         }
       },
       {
-        path: 'env-exception',
-        name: 'EnvExceptionStats',
-        component: () => import('@/views/EnvExceptionStats.vue'),
-        meta: { 
-          requiresAuth: true,
-          permissions: ['admin'] 
-        }
-      },
-      {
         path: 'filter-rules',
         name: 'FilterRuleList',
         component: FilterRuleList,
@@ -143,6 +133,11 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: Login
+  },
+  {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: ForgotPassword
   },
   {
         path: '/reader',

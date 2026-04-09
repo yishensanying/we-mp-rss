@@ -48,7 +48,6 @@
                       <a-typography-text
                         strong
                         :heading="1"
-                        :class="{ 'article-title-read': item.is_read === 1 }"
                       >
                         <strong>{{ item.title }}</strong>
                       </a-typography-text>
@@ -718,11 +717,6 @@ a-button {
 
 .favorite-icon.favorited {
   color: rgb(var(--warning-6));
-}
-
-.article-title-read {
-  text-decoration: line-through;
-  opacity: 0.7;
 }
 
 .mp-list-container {

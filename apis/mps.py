@@ -19,6 +19,7 @@ from jobs.article import UpdateArticle
 from driver.wxarticle import WXArticleFetcher
 import threading
 from uuid import uuid4
+from typing import Optional
 router = APIRouter(prefix=f"/mps", tags=["公众号管理"])
 # import core.db as db
 # UPDB=db.Db("数据抓取")
@@ -196,16 +197,17 @@ async def search_mp(
 
 @router.get("", summary="获取公众号列表")
 async def get_mps(
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=500),
     offset: int = Query(0, ge=0),
     kw: str = Query(""),
-    status: int = Query(None, description="状态筛选: 1=启用, 0=停用, 不传=全部"),
+    status: Optional[int] = Query(None, description="状态筛选: 1=启用, 0=停用, 不传=全部"),
     current_user: dict = Depends(get_current_user_or_ak)
 ):
     session = DB.get_session()
     try:
         from core.models.feed import Feed
         query = session.query(Feed).filter(Feed.id != FEATURED_MP_ID)
+        kw = (kw or "").strip()
         if kw:
             query = query.filter(Feed.mp_name.ilike(f"%{kw}%"))
         if status is not None:

@@ -191,7 +191,7 @@ class Db:
             if art.id:
                art.id=f"{str(art.mp_id)}-{art.id}".replace("MP_WXS_","")
 
-            existing = session.query(Article).filter(Article.id == art.id).first()
+            existing = session.query(Article).filter((Article.url == art.url) | (Article.id == art.id)).first()
 
             if check_exist and existing is not None:
                 print_warning(f"Article already exists: {art.id}")

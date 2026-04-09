@@ -51,14 +51,51 @@ export interface FeaturedArticleTask {
   created?: boolean
 }
 
-export const getSubscriptions = (params?: { page?: number; pageSize?: number; kw?: string; status?: number }) => {
+const normalizePageSize = (pageSize?: number) => {
+  if (!pageSize || Number.isNaN(pageSize)) {
+    return 10
+  }
+  return Math.min(Math.max(pageSize, 1), 500)
+}
+
+const buildSubscriptionQuery = (params?: { page?: number; pageSize?: number; kw?: string; status?: number }) => {
+  const safePageSize = normalizePageSize(params?.pageSize)
+  const safePage = Math.max(params?.page || 0, 0)
   const apiParams = {
-    offset: (params?.page || 0) * (params?.pageSize || 10),
-    limit: params?.pageSize || 10,
-    kw: params?.kw || "",
+    offset: safePage * safePageSize,
+    limit: safePageSize,
+    kw: (params?.kw || "").trim(),
     ...(params?.status !== undefined && params?.status !== null ? { status: params.status } : {})
   }
+  return apiParams
+}
+
+export const getSubscriptions = (params?: { page?: number; pageSize?: number; kw?: string; status?: number }) => {
+  const apiParams = buildSubscriptionQuery(params)
   return http.get<SubscriptionListResult>('/wx/mps', { params: apiParams })
+}
+
+export const getAllSubscriptions = async (params?: { kw?: string; status?: number; pageSize?: number }) => {
+  const pageSize = normalizePageSize(params?.pageSize || 100)
+  let page = 0
+  let list: Subscription[] = []
+
+  while (true) {
+    const data = await getSubscriptions({
+      page,
+      pageSize,
+      kw: params?.kw,
+      status: params?.status
+    })
+    const current = data?.list || []
+    list = list.concat(current)
+    if (current.length < pageSize) {
+      break
+    }
+    page += 1
+  }
+
+  return list
 }
 
 export const getSubscriptionDetail = (mp_id: string) => {

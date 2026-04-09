@@ -24,7 +24,8 @@ server:
 #需要注意数据库连接字符串的格式，如果是sqlite数据库，则使用sqlite:///路径的形式，如果是mysql数据库，
 #则使用mysql+pymysql://<username>:<password>@<host>/<database>?charset=<数据库编码>的形式
 #如果是oracle数据库，则使用oracle+oracledb://<username>:<password>@<host>:<port>/<service_name>的形式
-db: ${DB:-sqlite:///data/db.db}
+#db: ${DB:-sqlite:///data/db.db}
+db: ${DB:-oracle+oracledb://xnnsu:xnnsu@10.89.185.151:1521/AMDB}
 #Redis 连接配置，用于缓存 Token 等数据，可选配置
 #如果未配置 host，则不使用 Redis
 #推荐使用分字段配置，避免 URL 编码问题（密码中可以直接包含 @、: 等字符）

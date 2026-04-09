@@ -10,7 +10,12 @@ from core.auth import (
     list_user_aks,
     deactivate_ak,
     delete_ak,
-    update_ak
+    update_ak,
+    create_password_reset_code,
+    verify_reset_code,
+    reset_user_password,
+    send_reset_code_notice,
+    get_user
 )
 from .ver import API_VERSION
 from .base import success_response, error_response
@@ -304,4 +309,115 @@ async def delete_access_key(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_response(code=50001, message=f"删除失败: {str(e)}")
+        )
+
+
+# ===== 密码找回接口 =====
+
+class RequestResetCodeRequest(BaseModel):
+    """请求重置验证码"""
+    username: str
+
+
+class ResetPasswordRequest(BaseModel):
+    """重置密码请求"""
+    username: str
+    code: str
+    new_password: str
+
+
+@router.post("/password/reset-request", summary="请求密码重置验证码")
+async def request_password_reset(req: RequestResetCodeRequest):
+    """
+    请求密码重置验证码
+    
+    验证码将通过系统通知（钉钉/飞书/微信等）发送给管理员
+    
+    用法示例：
+    ```
+    POST /api/v1/auth/password/reset-request
+    Content-Type: application/json
+    
+    {
+        "username": "your_username"
+    }
+    ```
+    """
+    try:
+        # 检查用户是否存在
+        user = get_user(req.username)
+        if not user:
+            # 不暴露用户是否存在的信息
+            return success_response(None, "如果用户存在，验证码已发送到系统通知")
+        
+        # 生成验证码
+        code = create_password_reset_code(req.username)
+        
+        # 发送通知
+        send_success = send_reset_code_notice(req.username, code)
+        
+        if not send_success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=error_response(code=50002, message="验证码发送失败，请检查系统通知配置（需在 config.yaml 中配置 notice.webhook）")
+            )
+        
+        return success_response(None, "验证码已发送，请联系管理员获取")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_response(code=50001, message=f"请求失败: {str(e)}")
+        )
+
+
+@router.post("/password/reset", summary="重置密码")
+async def reset_password(req: ResetPasswordRequest):
+    """
+    使用验证码重置密码
+    
+    用法示例：
+    ```
+    POST /api/v1/auth/password/reset
+    Content-Type: application/json
+    
+    {
+        "username": "your_username",
+        "code": "123456",
+        "new_password": "new_password_123"
+    }
+    ```
+    """
+    try:
+        # 验证验证码
+        if not verify_reset_code(req.username, req.code):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_response(code=40001, message="验证码无效或已过期")
+            )
+        
+        # 验证新密码长度
+        if len(req.new_password) < 6:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_response(code=40002, message="密码长度不能少于6位")
+            )
+        
+        # 重置密码
+        success = reset_user_password(req.username, req.new_password)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=error_response(code=50003, message="密码重置失败")
+            )
+        
+        return success_response(None, "密码重置成功，请使用新密码登录")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_response(code=50001, message=f"重置失败: {str(e)}")
         )

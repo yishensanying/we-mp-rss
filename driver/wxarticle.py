@@ -260,6 +260,7 @@ class WXArticleFetcher:
                 "biz": "",
                 }
             }
+        original_url = url
         try:
             self.controller.start_browser(proxy_url=self.browser_proxy_url)
         
@@ -336,7 +337,15 @@ class WXArticleFetcher:
                 content_element = page.locator("#js_article")
                 content = content_element.inner_html()
 
-            content=self.clean_article_content(str(content))
+            mp_id_for_rule = ""
+            try:
+                # 使用原始文章 URL 提取 biz，避免代理改写后的 URL 丢失 __biz 参数
+                biz_from_url = self.extract_biz_from_source(original_url)
+                if biz_from_url:
+                    mp_id_for_rule = "MP_WXS_" + base64.b64decode(biz_from_url).decode("utf-8")
+            except Exception:
+                mp_id_for_rule = ""
+            content=self.clean_article_content(str(content), mp_id_for_rule)
             #获取图像资源
             images = [
                 img.get_attribute("data-src") or img.get_attribute("src")
@@ -572,8 +581,8 @@ class _WebProxy:
         return _get_shared_fetcher().get_image_url(url)
 
     @staticmethod
-    def clean_article_content(html_content: str) -> str:
-        return _get_shared_fetcher().clean_article_content(html_content)
+    def clean_article_content(html_content: str, mp_id: str = "") -> str:
+        return _get_shared_fetcher().clean_article_content(html_content, mp_id)
 
     @staticmethod
     def proxy_images(content: str) -> str:

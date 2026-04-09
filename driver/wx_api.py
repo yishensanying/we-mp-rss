@@ -83,6 +83,7 @@ class WeChatAPI:
             包含二维码信息的字典
         """
         self.__init__()
+        self._clean_qr_code()
         if self.check_lock():
             print_warning("微信公众平台登录脚本正在运行，请勿重复运行")
             return {
@@ -892,6 +893,7 @@ class WeChatAPI:
         }      
     def GetCode(self,CallBack=None,Notice=None):
         from core.print import print_warning
+        self._clean_qr_code()
         if self.check_lock():
             print_warning("微信公众平台登录脚本正在运行，请勿重复运行")
             return {

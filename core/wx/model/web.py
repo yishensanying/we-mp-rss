@@ -17,9 +17,8 @@ class MpsWeb(WxGather):
             from driver.wxarticle import Web as App
             r = App.get_article_content(url)
             if r!=None:
-                text = r.get("content","")
-                text=self.remove_common_html_elements(text)
-                return  text
+                # get_article_content 内部已经完成公众号规则与基础清洗，避免二次清洗
+                return r.get("content","")
         except Exception as e:
             logger.error(e)
         return ""

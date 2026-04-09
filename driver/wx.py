@@ -181,13 +181,13 @@ class Wx:
             return False 
     def GetCode(self,CallBack=None,Notice=None):
         self.Notice=Notice
+        self.Clean()
         if  self.check_lock():
             print_warning("微信公众平台登录脚本正在运行，请勿重复运行")
             return {
                 "code":f"{self.wx_login_url}?t={(time.time())}",
                 "msg":"微信公众平台登录脚本正在运行，请勿重复运行！"}
        
-        self.Clean()
         print("子线程执行中")
         from core.thread import ThreadManager
         self.thread = ThreadManager(target=self.wxLogin,args=(CallBack,True))  # 传入函数名
@@ -325,8 +325,10 @@ class Wx:
                 
             self.set_lock()
             
-            with self._login_lock:
-                self._haslogin = False
+            # 使用更短的锁持有时间，只保护变量修改
+            self._login_lock.acquire()
+            self._haslogin = False
+            self._login_lock.release()
                 
             # 清理现有资源
             self.cleanup_resources()

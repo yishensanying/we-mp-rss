@@ -31,6 +31,7 @@ export interface FilterRuleCreateParams {
 }
 
 export interface FilterRuleUpdateParams {
+  mp_id?: string
   rule_name?: string
   remove_ids?: string[]
   remove_classes?: string[]

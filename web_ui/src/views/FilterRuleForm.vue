@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import {
@@ -10,20 +10,19 @@ import {
   type FilterRuleCreateParams,
   type FilterRuleUpdateParams
 } from '@/api/filterRule'
-import MpMultiSelect from '@/components/MpMultiSelect.vue'
+import { getAllSubscriptions, type Subscription } from '@/api/subscription'
 
 const router = useRouter()
 const route = useRoute()
 const loading = ref(false)
 const submitting = ref(false)
 const isEdit = computed(() => !!route.params.id)
-const showMpSelector = ref(false)
-const mpSelectorRef = ref<InstanceType<typeof MpMultiSelect> | null>(null)
 const modalVisible = ref(true)
+const mpList = ref<Subscription[]>([])
 
-// 表单数据
+// 表单数据（mp_ids 为空表示全部公众号，对应后端 mp_id 为 "[]"）
 const formData = ref<{
-  mps_id: any[]  // 选中的公众号数组
+  mp_ids: string[]
   rule_name: string
   remove_ids: string
   remove_classes: string
@@ -33,7 +32,7 @@ const formData = ref<{
   remove_normal_tag: boolean
   priority: number
 }>({
-  mps_id: [],
+  mp_ids: [],
   rule_name: '',
   remove_ids: '',
   remove_classes: '',
@@ -43,6 +42,15 @@ const formData = ref<{
   remove_normal_tag: false,
   priority: 0
 })
+
+const fetchMpList = async () => {
+  try {
+    const list = await getAllSubscriptions({ pageSize: 100 })
+    mpList.value = list.filter(m => m.mp_name !== '精选文章')
+  } catch {
+    mpList.value = []
+  }
+}
 
 // 新增属性行
 const addAttributeRow = () => {
@@ -54,26 +62,33 @@ const removeAttributeRow = (index: number) => {
   formData.value.remove_attributes.splice(index, 1)
 }
 
+function resolveRuleMpIds(rule: FilterRule): string[] {
+  if (Array.isArray(rule.mp_ids)) {
+    return rule.mp_ids.map(String)
+  }
+  try {
+    if (rule.mp_id && rule.mp_id.startsWith('[')) {
+      const parsed = JSON.parse(rule.mp_id)
+      return Array.isArray(parsed) ? parsed.map(String) : []
+    }
+    if (rule.mp_id) {
+      return [rule.mp_id.trim()].filter(Boolean)
+    }
+  } catch {
+    /* ignore */
+  }
+  return []
+}
+
 // 获取规则详情
 const fetchRuleDetail = async (id: number) => {
   loading.value = true
   try {
-    const res = await getFilterRule(id)
-    const rule = res
-    // 解析 mp_id JSON 字符串
-    let mpIds: any[] = []
-    try {
-      if (rule.mp_id) {
-        mpIds = rule.mp_id.startsWith('[')
-          ? JSON.parse(rule.mp_id)
-          : rule.mp_id.split(',').map((id: string) => ({ id: id.trim() }))
-      }
-    } catch {
-      mpIds = rule.mp_id ? [{ id: rule.mp_id }] : []
-    }
+    const rule = await getFilterRule(id)
+    const mpIds = resolveRuleMpIds(rule)
 
     formData.value = {
-      mps_id: mpIds,
+      mp_ids: mpIds,
       rule_name: rule.rule_name,
       remove_ids: (rule.remove_ids || []).join('\n'),
       remove_classes: (rule.remove_classes || []).join('\n'),
@@ -83,13 +98,6 @@ const fetchRuleDetail = async (id: number) => {
       remove_normal_tag: !!rule.remove_normal_tag,
       priority: rule.priority || 0
     }
-
-    // 初始化选择器数据
-    nextTick(() => {
-      if (mpSelectorRef.value && mpIds.length > 0) {
-        mpSelectorRef.value.parseSelected(mpIds)
-      }
-    })
   } catch (error) {
     Message.error('获取规则详情失败')
     router.back()
@@ -107,9 +115,8 @@ const handleSubmit = async () => {
 
   submitting.value = true
   try {
-    // 提取公众号ID数组并转为JSON字符串，如果为空则传空数组
-    const mpIdsArray = formData.value.mps_id.map((mp: any) => mp.id?.toString() || mp.toString())
-    const mpIdJson = mpIdsArray.length > 0 ? JSON.stringify(mpIdsArray) : '[]'
+    const mpIdJson =
+      formData.value.mp_ids.length > 0 ? JSON.stringify(formData.value.mp_ids) : '[]'
 
     const data: FilterRuleCreateParams | FilterRuleUpdateParams = {
       mp_id: mpIdJson,
@@ -156,11 +163,11 @@ const handleCancel = () => {
 }
 
 onMounted(async () => {
+  await fetchMpList()
   if (isEdit.value) {
     fetchRuleDetail(Number(route.params.id))
   } else if (route.query.mp_id) {
-    // 从URL参数获取预选公众号
-    formData.value.mps_id = [{ id: route.query.mp_id as string }]
+    formData.value.mp_ids = [String(route.query.mp_id)]
   }
 })
 </script>
@@ -178,23 +185,23 @@ onMounted(async () => {
     <a-spin :loading="loading">
       <div class="filter-rule-form">
         <a-form :model="formData" layout="vertical" @submit-success="handleSubmit">
-          <!-- <a-form-item label="选择公众号" field="mps_id">
-            <div class="mp-selector-row">
-              <a-input
-                :model-value="(formData.mps_id||[]).map((mp: any) => mp.id?.toString() || mp.toString()).join(',')"
-                placeholder="不选择则对所有公众号生效"
-                readonly
-                class="mp-input"
-              />
-              <a-button type="primary" @click="showMpSelector = true">选择</a-button>
-            </div>
-            <template #extra>
-              <span class="form-tip">可选择多个公众号，不选择则作为全局规则对所有公众号生效</span>
-            </template>
-          </a-form-item> -->
-
           <a-form-item label="规则名称" field="rule_name" :rules="[{ required: true, message: '请输入规则名称' }]">
             <a-input v-model="formData.rule_name" placeholder="例如：移除广告元素" />
+          </a-form-item>
+
+          <a-form-item label="公众号选择" field="mp_ids">
+            <a-select
+              v-model="formData.mp_ids"
+              multiple
+              allow-clear
+              allow-search
+              :max-tag-count="3"
+              placeholder="全部公众号"
+              :options="mpList.map(m => ({ label: m.mp_name, value: m.id }))"
+            />
+            <template #extra>
+              <span class="form-tip">不选或清空表示全部已订阅公众号；选中项保存为 mp_id 列表</span>
+            </template>
           </a-form-item>
 
           <a-form-item label="优先级" field="priority">
@@ -288,24 +295,6 @@ onMounted(async () => {
         </a-form>
       </div>
     </a-spin>
-
-    <!-- 公众号选择器模态框 -->
-    <a-modal
-      v-model:visible="showMpSelector"
-      title="选择公众号"
-      :footer="false"
-      width="800px"
-      class="mp-selector-modal"
-      :unmount-on-close="true"
-    >
-      <MpMultiSelect
-        ref="mpSelectorRef"
-        v-model="formData.mps_id"
-      />
-      <template #footer>
-        <a-button type="primary" @click="showMpSelector = false">确定</a-button>
-      </template>
-    </a-modal>
   </a-modal>
 </template>
 
@@ -331,17 +320,6 @@ onMounted(async () => {
 .form-tip {
   color: var(--color-text-3);
   font-size: 12px;
-}
-
-.mp-selector-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.mp-input {
-  flex: 1;
-  min-width: 0;
 }
 
 .attribute-list {
@@ -377,15 +355,6 @@ onMounted(async () => {
 
 /* 移动端适配 */
 @media (max-width: 768px) {
-  .mp-selector-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .mp-selector-row .arco-btn {
-    width: 100%;
-  }
-
   .attribute-row {
     flex-wrap: wrap;
     gap: 8px;
@@ -468,18 +437,6 @@ onMounted(async () => {
   }
 
   .filter-rule-modal .arco-modal-body {
-    padding: 12px;
-    max-height: 60vh;
-    overflow-y: auto;
-  }
-
-  .mp-selector-modal .arco-modal {
-    width: 95% !important;
-    max-width: 95% !important;
-    margin: 20px auto;
-  }
-
-  .mp-selector-modal .arco-modal-body {
     padding: 12px;
     max-height: 60vh;
     overflow-y: auto;

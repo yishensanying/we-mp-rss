@@ -13,7 +13,6 @@ from apis.mps import router as wx_router
 from apis.res import router as res_router
 from apis.message_task import router as task_router
 from apis.sys_info import router as sys_info_router
-from apis.env_exception import router as env_exception_router
 from apis.filter_rule import router as filter_rule_router
 from apis.task_queue import router as task_queue_router
 from views import router as views_router
@@ -70,7 +69,6 @@ async def add_custom_header(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Version"] = VERSION
     response.headers["X-Powered-By"] = "Rachel"
-    response.headers["GITHUB"] = "https://github.com/rachelos/we-mp-rss"
     response.headers["Server"] = cfg.get("app_name", "WeRSS")
     return response
 # 创建API路由分组
@@ -81,7 +79,6 @@ api_router.include_router(article_router)
 api_router.include_router(wx_router)
 api_router.include_router(task_router)
 api_router.include_router(sys_info_router)
-api_router.include_router(env_exception_router)
 api_router.include_router(filter_rule_router)
 api_router.include_router(task_queue_router)
 

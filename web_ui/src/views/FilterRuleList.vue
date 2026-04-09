@@ -8,7 +8,7 @@ import {
   updateFilterRule,
   type FilterRule
 } from '@/api/filterRule'
-import { getSubscriptions, type Subscription } from '@/api/subscription'
+import { getAllSubscriptions, type Subscription } from '@/api/subscription'
 
 const router = useRouter()
 const route = useRoute()
@@ -27,8 +27,7 @@ const isMobile = ref(window.innerWidth < 768)
 // 获取公众号列表
 const fetchMpList = async () => {
   try {
-    const res = await getSubscriptions({ page: 0, pageSize: 100 })
-    mpList.value = res.list || []
+    mpList.value = await getAllSubscriptions({ pageSize: 100 })
   } catch (error) {
     console.error('获取公众号列表失败:', error)
   }
