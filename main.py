@@ -6,9 +6,6 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from core.config import cfg
-if cfg.get("redis.server.enabled", False):
-        from tools.redis_server import run_redis_server
-        run_redis_server(config_path="config.yaml")
 import uvicorn
 from core.print import print_warning, print_success
 import threading
@@ -77,7 +74,7 @@ if __name__ == '__main__':
         print_warning("未开启自动修正文章任务")
     
     # 启动文章统计定时刷新任务
-    if cfg.get("article_stats_refresh_enabled", True):  # 默认启用
+    if cfg.get("article_stats_refresh_enabled", False):  # 默认b不启用
         from jobs.mps import start_article_stats_refresh
         start_article_stats_refresh()
     else:
@@ -96,23 +93,21 @@ if __name__ == '__main__':
     # Windows 上使用自定义配置确保 ProactorEventLoop
     if sys.platform == 'win32':
         # 使用 uvicorn 的 Config 和 Server 类来控制事件循环
-        config = uvicorn.Config(
-            "web:app",
-            host="0.0.0.0",
-            port=int(cfg.get("port", 8001)),
-            reload=False,
-            reload_dirs=reload_dirs,
-            reload_excludes=['static', 'data', 'node_modules', '*.pnpm*'],
-            workers=thread,
-        )
+        config_kwargs = {
+            "app": "web:app",
+            "host": "0.0.0.0",
+            "port": int(cfg.get("port", 8001)),
+            "reload": False,
+            "workers": thread,
+        }
+        # 仅在启用 reload 时传递相关参数，避免 uvicorn 发出无效 reload 配置告警
+        if AutoReload:
+            config_kwargs["reload_dirs"] = reload_dirs
+            config_kwargs["reload_excludes"] = ['static', 'data', 'node_modules', '*.pnpm*']
+
+        config = uvicorn.Config(**config_kwargs)
         server = uvicorn.Server(config)
-        
-        # 确保使用 ProactorEventLoop
-        if not isinstance(asyncio.get_event_loop(), asyncio.ProactorEventLoop):
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
+
         asyncio.run(server.serve())
     else:
         uvicorn.run("web:app", host="0.0.0.0", port=int(cfg.get("port",8001)),

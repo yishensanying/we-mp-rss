@@ -54,10 +54,13 @@ async def articles_view(
             search_filter = format_search_kw(keyword.strip())
             if search_filter is not None:
                 base_conditions.append(search_filter)
+        # Oracle 下 CLOB 不能直接和空串比较，使用 length(content) 判断
+        from sqlalchemy import func
+        content_length = func.length(Article.content)
+
         # 只显示有正文的文章
         if has_content == "1":
-            base_conditions.append(Article.content.isnot(None))
-            base_conditions.append(Article.content != "")
+            base_conditions.append(content_length > 0)
         
         # 使用单一查询获取文章和Feed信息
         from sqlalchemy import and_
@@ -120,8 +123,6 @@ async def articles_view(
         cache_key_popular = "popular_mps_top10"
         mp_options = data_cache.get(cache_key_popular)
         if mp_options is None:
-            from sqlalchemy import func
-            
             popular_mps = session.query(
                 Feed.id, Feed.mp_name,
                 func.count(Article.id).label('article_count')

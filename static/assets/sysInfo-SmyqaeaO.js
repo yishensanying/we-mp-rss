@@ -1,0 +1,1 @@
+import{t as e}from"./http-DyJMf1cd.js";var t=async()=>await e.get(`/wx/sys/info`);export{t};

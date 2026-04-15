@@ -18,6 +18,7 @@ import os
 from jobs.article import UpdateArticle
 from driver.wxarticle import WXArticleFetcher
 import threading
+import time
 from uuid import uuid4
 from typing import Optional
 router = APIRouter(prefix=f"/mps", tags=["公众号管理"])
@@ -42,11 +43,85 @@ def build_featured_mp_item():
 
 _featured_article_tasks = {}
 _featured_article_tasks_lock = threading.Lock()
+_mp_update_tasks = {}
+_mp_update_tasks_lock = threading.Lock()
 
 
 def _set_featured_article_task(task_id: str, data: dict):
     with _featured_article_tasks_lock:
         _featured_article_tasks[task_id] = data
+
+
+def _set_mp_update_task(task_id: str, data: dict):
+    with _mp_update_tasks_lock:
+        _mp_update_tasks[task_id] = data
+
+
+def _get_active_mp_update_task(mp_id: str):
+    with _mp_update_tasks_lock:
+        for task in _mp_update_tasks.values():
+            if task.get("mp_id") != mp_id:
+                continue
+            if task.get("status") in {"pending", "running"}:
+                return dict(task)
+    return None
+
+
+def _run_mp_update_task(task_id: str, mp_payload: dict):
+    """队列任务: 抓取指定公众号文章并写入任务状态"""
+    from core.wx import WxGather
+
+    mp_id = mp_payload.get("id")
+    mp_name = mp_payload.get("mp_name")
+    faker_id = mp_payload.get("faker_id")
+    start_page = int(mp_payload.get("start_page", 0))
+    end_page = int(mp_payload.get("end_page", 1))
+    started_at = int(time.time())
+
+    _set_mp_update_task(task_id, {
+        "task_id": task_id,
+        "mp_id": mp_id,
+        "mp_name": mp_name,
+        "status": "running",
+        "message": "任务执行中",
+        "start_page": start_page,
+        "end_page": end_page,
+        "started_at": started_at,
+    })
+
+    try:
+        wx = WxGather().Model()
+        wx.get_Articles(
+            faker_id,
+            Mps_id=mp_id,
+            Mps_title=mp_name,
+            CallBack=UpdateArticle,
+            start_page=start_page,
+            MaxPage=end_page,
+        )
+        articles = wx.articles or []
+        _set_mp_update_task(task_id, {
+            "task_id": task_id,
+            "mp_id": mp_id,
+            "mp_name": mp_name,
+            "status": "success",
+            "message": "公众号刷新成功",
+            "start_page": start_page,
+            "end_page": end_page,
+            "total": len(articles),
+            "finished_at": int(time.time()),
+        })
+    except Exception as e:
+        _set_mp_update_task(task_id, {
+            "task_id": task_id,
+            "mp_id": mp_id,
+            "mp_name": mp_name,
+            "status": "failed",
+            "message": f"公众号刷新失败: {str(e)}",
+            "start_page": start_page,
+            "end_page": end_page,
+            "finished_at": int(time.time()),
+        })
 
 
 def _ensure_featured_feed(session):
@@ -356,6 +431,7 @@ async def update_mps(
 ):
     session = DB.get_session()
     try:
+        from core.queue import TaskQueue
         from core.models.feed import Feed
         mp = session.query(Feed).filter(Feed.id == mp_id).first()
         if not mp:
@@ -363,7 +439,11 @@ async def update_mps(
                     code=40401,
                     message="请选择一个公众号"
                 )
-        import time
+
+        active_task = _get_active_mp_update_task(mp_id)
+        if active_task:
+            return success_response(active_task, message="该公众号已有刷新任务在执行")
+
         sync_interval=cfg.get("sync_interval",60)
         if mp.update_time is None:
             mp.update_time=int(time.time())-sync_interval
@@ -374,20 +454,52 @@ async def update_mps(
                     message="请不要频繁更新操作",
                     data={"time_span":time_span}
                 )
-        result=[]    
-        def UpArt(mp):
-            from core.wx import WxGather
-            wx=WxGather().Model()
-            wx.get_Articles(mp.faker_id,Mps_id=mp.id,Mps_title=mp.mp_name,CallBack=UpdateArticle,start_page=start_page,MaxPage=end_page)
-            result=wx.articles
-        import threading
-        threading.Thread(target=UpArt,args=(mp,)).start()
+
+        task_id = str(uuid4())
+        task_name = f"refresh:{mp.mp_name}"
+        task = {
+            "task_id": task_id,
+            "mp_id": mp.id,
+            "mp_name": mp.mp_name,
+            "status": "pending",
+            "message": "任务已入队",
+            "start_page": start_page,
+            "end_page": end_page,
+            "created_at": int(time.time()),
+        }
+        _set_mp_update_task(task_id, task)
+
+        queued = TaskQueue.add_task(
+            _run_mp_update_task,
+            task_id,
+            {
+                "id": mp.id,
+                "mp_name": mp.mp_name,
+                "faker_id": mp.faker_id,
+                "start_page": start_page,
+                "end_page": end_page,
+            },
+            task_name=task_name,
+        )
+        if not queued:
+            task["status"] = "failed"
+            task["message"] = "任务入队失败(可能已有同名任务在队列中)"
+            _set_mp_update_task(task_id, task)
+            return error_response(
+                code=50002,
+                message=task["message"],
+                data=task,
+            )
+
         return success_response({
             "time_span":time_span,
-            "list":result,
-            "total":len(result),
-            "mps":mp
-        })
+            "task_id": task_id,
+            "status": "pending",
+            "mps": {
+                "id": mp.id,
+                "mp_name": mp.mp_name,
+            }
+        }, message="已开始刷新，请通过任务状态接口查看进度")
     except Exception as e:
         print(f"更新公众号文章: {str(e)}",e)
         raise HTTPException(
@@ -397,6 +509,26 @@ async def update_mps(
                 message=f"更新公众号文章{str(e)}"
             )
         )
+    finally:
+        session.close()
+
+
+@router.get("/update/tasks/{task_id}", summary="查询公众号刷新任务状态")
+async def get_mp_update_task_status(
+    task_id: str,
+    current_user: dict = Depends(get_current_user_or_ak)
+):
+    with _mp_update_tasks_lock:
+        task = _mp_update_tasks.get(task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=error_response(
+                code=40404,
+                message="刷新任务不存在"
+            )
+        )
+    return success_response(task)
 
 @router.get("/{mp_id}", summary="获取公众号详情")
 async def get_mp(

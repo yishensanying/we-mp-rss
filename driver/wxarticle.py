@@ -12,7 +12,7 @@ from typing import Dict
 from bs4 import BeautifulSoup
 
 from .playwright_driver import PlaywrightController
-from core.print import print_error, print_info, print_success, print_warning
+from core.print import print_error, print_warning, print_info
 from core.config import cfg
 
 
@@ -37,7 +37,7 @@ class WXArticleFetcher:
         if self.controller:
             await self.controller.Close()
 
-    async def get_article_content(self, url: str) -> Dict:
+    async def get_article_content(self, url: str, mp_id: str = "") -> Dict:
         """
         获取文章内容(异步)
 
@@ -154,7 +154,15 @@ class WXArticleFetcher:
                 if not content:
                     content = await page.locator('#js_article').inner_html()
 
-                content=Web.clean_article_content(str(content))
+                target_mp_id = (mp_id or "").strip()
+                if not target_mp_id:
+                    biz_from_url = self._extract_biz(url, content or "")
+                    if biz_from_url:
+                        try:
+                            target_mp_id = "MP_WXS_" + base64.b64decode(biz_from_url).decode("utf-8")
+                        except Exception:
+                            target_mp_id = ""
+                content=Web.clean_article_content(str(content), mp_id=target_mp_id)
                 # 更新基本信息
                 info["title"] = title or ""
                 info["author"] = author or ""
@@ -178,7 +186,6 @@ class WXArticleFetcher:
                             ele_logo = page.locator(selector)
                             logo_src = await ele_logo.get_attribute('src', timeout=5000)
                             if logo_src:
-                                print_success(f"使用选择器 {selector} 成功获取公众号头像")
                                 break
                         except Exception:
                             continue
@@ -256,8 +263,6 @@ class WXArticleFetcher:
             total_height = await page.evaluate('() => document.body.scrollHeight')
             current_position = 0
             
-            print_info(f"开始滚动加载图片，页面总高度: {total_height}px")
-            
             scroll_count = 0
             while current_position < total_height and scroll_count < max_scrolls:
                 # 滚动一段距离
@@ -271,10 +276,6 @@ class WXArticleFetcher:
                 total_height = await page.evaluate('() => document.body.scrollHeight')
                 scroll_count += 1
                 
-                # 每隔几次滚动输出进度
-                if scroll_count % 5 == 0:
-                    print_info(f"滚动进度: {current_position}/{total_height}px ({scroll_count}次)")
-            
             # 滚动到顶部，然后再到底部确保所有图片加载
             await page.evaluate('() => window.scrollTo(0, 0)')
             await asyncio.sleep(0.5)
@@ -285,8 +286,6 @@ class WXArticleFetcher:
             
             # 等待所有图片加载完成
             await self._wait_for_images_to_load(page)
-            
-            print_success(f"滚动完成，共滚动 {scroll_count} 次")
             
         except Exception as e:
             print_warning(f"滚动加载图片时出错: {e}")
@@ -613,7 +612,6 @@ class Web:
         # 应用过滤规则
         try:
             from apis.filter_rule import apply_filter_rules
-            print(f"[DB] 准备应用过滤规则: mp_id={mp_id}, content_html存在={html_content is not None}")
             if html_content:
                 html_content = apply_filter_rules(html_content, mp_id)
 
@@ -646,7 +644,7 @@ class Web:
                                  )
 
     @staticmethod
-    def get_article_content(url: str) -> Dict:
+    def get_article_content(url: str, mp_id: str = "") -> Dict:
         """
         获取文章内容(同步包装器,兼容旧代码)
 
@@ -671,7 +669,7 @@ class Web:
                 fetcher = WXArticleFetcher()
 
                 # 运行异步方法
-                result = loop.run_until_complete(fetcher.get_article_content(url))
+                result = loop.run_until_complete(fetcher.get_article_content(url, mp_id=mp_id))
 
                 return result
             finally:

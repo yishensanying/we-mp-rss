@@ -1,5 +1,3 @@
-from tools.redis_server import run_redis_server
-run_redis_server(config_path="config.yaml")
 from os import remove
 from driver.wxarticle import Web
 from driver.success import Success

@@ -43,11 +43,9 @@ class UserAgentGenerator:
         """
         if mobile_mode:
             ua=self._generate_mobile_ua()
-            print(f"生成移动端 User-Agent: {ua}")
             return ua
         else:
             ua=self._generate_desktop_ua()
-            print(f"生成桌面端 User-Agent: {ua}")
             return ua
     
     def _generate_mobile_ua(self) -> str:

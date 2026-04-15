@@ -7,20 +7,16 @@
         <a-card :bordered="false" title="公众号"
           :headStyle="{ padding: '12px 16px', borderBottom: '1px solid #eee', background: '#fff', zIndex: 1, border: 0 }">
           <template #extra>
-            <a-dropdown>
-              <a-button type="primary">
+            <a-space>
+              <a-button type="primary" @click="showAddModal">
                 <template #icon><icon-plus /></template>
-                订阅
-                <icon-down />
+                订阅公众号
               </a-button>
-              <template #content>
-                <a-doption @click="showAddModal"><template #icon><icon-plus /></template>添加公众号</a-doption>
-                <a-doption @click="showAddFeaturedArticleModal"><template #icon><icon-link /></template>添加精选文章</a-doption>
-                <a-doption @click="exportMPS"><template #icon><icon-export /></template>导出公众号</a-doption>
-                <a-doption @click="importMPS"><template #icon><icon-import /></template>导入公众号</a-doption>
-                <a-doption @click="exportOPML"><template #icon><icon-share-external /></template>导出OPML</a-doption>
-              </template>
-            </a-dropdown>
+              <a-button @click="showAddFeaturedArticleModal">
+                <template #icon><icon-link /></template>
+                添加精选文章
+              </a-button>
+            </a-space>
           </template>
           <div style="display: flex; flex-direction: column;; background: #fff">
             <div style="margin-bottom: 12px;">
@@ -106,11 +102,6 @@
                 style="margin: 0 8px;">
               </a-switch>
 
-              <a-button  @click="handleExportShow()">
-                <template #icon><icon-export /></template>
-                导出
-              </a-button>
-              <ExportModal ref="exportModal"  />
               <a-button @click="refresh" v-if="activeFeed?.id != '' && activeFeed?.id !== FEATURED_MP_ID">
                 <template #icon><icon-refresh /></template>
                 刷新
@@ -134,36 +125,6 @@
                     <template #icon> <TextIcon text="O" /></template>
                     清理旧文章
                   </a-doption>
-                </template>
-              </a-dropdown>
-              <a-button @click="handleAuthClick">
-                <template #icon><icon-scan /></template>
-                刷新授权
-              </a-button>
-              <a-dropdown>
-                <a-button>
-                  <template #icon>
-                    <IconWifi />
-                  </template>
-                  订阅
-                  <icon-down />
-                </a-button>
-                <template #content>
-                  <a-doption @click="rssFormat = 'atom'; openRssFeed()"><template #icon>
-                      <TextIcon text="atom" />
-                    </template>ATOM</a-doption>
-                  <a-doption @click="rssFormat = 'rss'; openRssFeed()"><template #icon>
-                      <TextIcon text="rss" />
-                    </template>RSS</a-doption>
-                  <a-doption @click="rssFormat = 'json'; openRssFeed()"><template #icon>
-                      <TextIcon text="json" />
-                    </template>JSON</a-doption>
-                  <a-doption @click="rssFormat = 'md'; openRssFeed()"><template #icon>
-                      <TextIcon text="md" />
-                    </template>Markdown</a-doption>
-                  <a-doption @click="rssFormat = 'txt'; openRssFeed()"><template #icon>
-                      <TextIcon text="txt" />
-                    </template>Text</a-doption>
                 </template>
               </a-dropdown>
               <a-button type="primary" status="danger" @click="handleBatchDelete" :disabled="!selectedRowKeys.length">
@@ -353,12 +314,9 @@ import { Avatar } from '@/utils/constants'
 import { translatePage, setCurrentLanguage } from '@/utils/translate';
 import { ref, onMounted, h, nextTick, watch, computed, resolveComponent } from 'vue'
 import axios from 'axios'
-import { IconApps, IconAtt, IconDelete, IconEdit, IconEye, IconRefresh, IconScan, IconWeiboCircleFill, IconWifi, IconCode, IconCheck, IconClose, IconStop, IconPlayArrow, IconCopy, IconPlus, IconDown, IconExport, IconImport, IconShareExternal, IconStar, IconStarFill, IconLink, IconSettings } from '@arco-design/web-vue/es/icon'
+import { IconApps, IconAtt, IconDelete, IconEdit, IconEye, IconRefresh, IconWeiboCircleFill, IconCode, IconCheck, IconClose, IconStop, IconPlayArrow, IconCopy, IconPlus, IconDown, IconStar, IconStarFill, IconLink, IconSettings } from '@arco-design/web-vue/es/icon'
 import { getArticles, deleteArticle as deleteArticleApi, ClearArticle, ClearDuplicateArticle, getArticleDetail, getRefreshArticleTaskStatus, refreshArticle as refreshArticleApi, toggleArticleFavoriteStatus, toggleArticleReadStatus, cleanOldArticles } from '@/api/article'
-import { ExportOPML, ExportMPS, ImportMPS } from '@/api/export'
-import ExportModal from '@/components/ExportModal.vue'
-import { addFeaturedArticle, getFeaturedArticleTaskStatus, getSubscriptions, UpdateMps, toggleMpStatus as toggleMpStatusApi } from '@/api/subscription'
-import { inject } from 'vue'
+import { addFeaturedArticle, getFeaturedArticleTaskStatus, getSubscriptions, UpdateMps, getUpdateMpsTaskStatus, toggleMpStatus as toggleMpStatusApi } from '@/api/subscription'
 import { Message, Modal } from '@arco-design/web-vue'
 import { formatDateTime, formatTimestamp } from '@/utils/date'
 import router from '@/router'
@@ -373,7 +331,6 @@ const loading = ref(false)
 const mpList = ref([])
 const mpLoading = ref(false)
 const activeMpId = ref('')
-const exportModal = ref()
 const selectedRowKeys = ref([])
 const mpPagination = ref({
   current: 1,
@@ -739,7 +696,6 @@ watch(mpFilterType, () => {
   mpPagination.value.current = 1
   fetchMpList()
 })
-const rssFormat = ref('atom')
 const activeFeed = ref({
   id: "",
   name: "全部",
@@ -887,86 +843,6 @@ const handleArticleFilterChange = () => {
   fetchArticles()
 }
 
-const wechatAuthQrcodeRef = ref()
-const showAuthQrcode = inject('showAuthQrcode') as () => void
-const handleAuthClick = () => {
-  showAuthQrcode()
-}
-
-const exportOPML = async () => {
-  try {
-    const response = await ExportOPML();
-    const blob = new Blob([response], { type: 'application/xml' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'rss_feed.opml';
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-  } catch (error) {
-    console.error('导出OPML失败:', error);
-    Message.error(error?.message || '导出OPML失败');
-  }
-};
-const exportMPS = async () => {
-  try {
-    const res = await ExportMPS();
-    const data = (res as any).data ?? res;
-    const blob = data instanceof Blob
-      ? data
-      : new Blob([data], { type: 'text/csv;charset=utf-8' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = '公众号列表.csv';
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-  } catch (error: any) {
-    Message.error(error?.message || '导出公众号失败');
-  }
-};
-
-const importMPS = async () => {
-  try {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.csv';
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const formData = new FormData();
-      formData.append('file', file);
-      const response = await ImportMPS(formData);
-      Message.info(response?.message || "导入成功");
-    };
-    input.click();
-  } catch (error) {
-    Message.error(error?.message || '导入公众号失败');
-  }
-};
-
-const openRssFeed = () => {
-  const format = ['rss', 'atom', 'json', 'md', 'txt'].includes(rssFormat.value)
-    ? rssFormat.value
-    : 'atom'
-  let search = ""
-  if (searchText.value != "") {
-    search = "/search/" + searchText.value;
-  }
-  if (!activeMpId.value) {
-    window.open(`/feed${search}/all.${format}`, '_blank')
-    return
-  }
-  const activeMp = mpList.value.find(item => item.id === activeMpId.value)
-  if (activeMp) {
-    window.open(`/feed${search}/${activeMpId.value}.${format}`, '_blank')
-  }
-}
-
 const resetScrollPosition = () => {
   window.scrollTo({
     top: 0,
@@ -1076,18 +952,45 @@ const showRefreshModal = () => {
   refreshModalVisible.value = true
 }
 
-const handleRefresh = () => {
-  fullLoading.value = true
-  UpdateMps(activeMpId.value, {
-    start_page: refreshForm.value.startPage,
-    end_page: refreshForm.value.endPage
-  }).then(() => {
-    Message.success('刷新成功')
+const pollUpdateMpTask = async (taskId: string) => {
+  for (let i = 0; i < 30; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    try {
+      const task = await getUpdateMpsTaskStatus(taskId)
+      if (task?.status === 'success') {
+        Message.success(task?.message || '刷新成功')
+        await fetchArticles()
+        return
+      }
+      if (task?.status === 'failed') {
+        Message.error(task?.message || '刷新失败')
+        return
+      }
+    } catch (error) {
+      console.error('查询公众号刷新任务失败:', error)
+    }
+  }
+  Message.info('刷新任务仍在执行，请稍后手动刷新列表查看结果')
+}
+
+const handleRefresh = async () => {
+  try {
+    const res = await UpdateMps(activeMpId.value, {
+      start_page: refreshForm.value.startPage,
+      end_page: refreshForm.value.endPage
+    })
+    const taskId = res?.task_id
+    Message.info(res?.message || '已开始刷新，请稍后查看任务状态')
     refreshModalVisible.value = false
-  }).finally(() => {
-    fullLoading.value = false
-  })
-  fetchArticles()
+    if (taskId) {
+      await pollUpdateMpTask(taskId)
+    } else {
+      await fetchArticles()
+    }
+  } catch (error) {
+    console.error('刷新公众号失败:', error)
+    Message.error(String(error || '刷新失败'))
+  }
 }
 const clear_articles = () => {
   fullLoading.value = true
@@ -1246,14 +1149,6 @@ const handleBatchDelete = () => {
     }
   });
 }
-
-const handleExportShow = async () => {
-  let mp_id=activeFeed.value?.id
-  let ids=selectedRowKeys.value
-  let mp_name=activeFeed.value?.name || activeFeed.value?.mp_name || '全部'
-  exportModal.value.show(mp_id,ids,mp_name)
-}
-
 
 onMounted(() => {
   console.log('组件挂载，开始获取数据')

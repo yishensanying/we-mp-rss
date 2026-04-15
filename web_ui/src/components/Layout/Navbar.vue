@@ -29,12 +29,6 @@
         </template>
         过滤规则
       </a-menu-item>
-       <a-menu-item key="/cascade/feed-status">
-        <template #icon>
-          <icon-storage />
-        </template>
-        公众号状态
-      </a-menu-item>
       <a-menu-item key="/access-keys">
         <template #icon>
           <icon-lock />

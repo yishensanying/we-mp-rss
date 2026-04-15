@@ -132,7 +132,11 @@ export const UpdateMps = (mp_id: string,params: { start_page?: number; end_page?
     start_page: (params?.start_page || 0),
     end_page: params?.end_page || 1
   }
-  return http.get<{code: number, message: string}>(`/wx/mps/update/${mp_id||'all'}?start_page=${apiParams.start_page}&end_page=${apiParams.end_page}`)
+  return http.get<{code: number, message: string, task_id?: string, status?: string}>(`/wx/mps/update/${mp_id||'all'}?start_page=${apiParams.start_page}&end_page=${apiParams.end_page}`)
+}
+
+export const getUpdateMpsTaskStatus = (taskId: string) => {
+  return http.get<{code: number, data: any}>(`/wx/mps/update/tasks/${taskId}`)
 }
 
 // 更新订阅公众号信息

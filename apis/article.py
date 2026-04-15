@@ -460,11 +460,14 @@ async def get_articles(
             'failed': DATA_STATUS.FAILED,
         }
 
+        # Oracle 下 CLOB 不能直接和 '' 比较，统一用 length(content) 判断是否有正文
+        content_length = func.length(Article.content)
+
         # 构建查询条件 - 使用 Article 模型（包含 content 字段）
         query = session.query(
             ArticleBase,
             case(
-                ((Article.content.isnot(None)) & (Article.content != ''), 1),
+                (content_length > 0, 1),
                 else_=0
             ).label('has_content')
         )
@@ -487,9 +490,9 @@ async def get_articles(
         # 支持 has_content 参数：true=有正文，false=无正文，None=不筛选
         if has_content is not None:
             if has_content:
-                query = query.filter((Article.content.isnot(None)) & (Article.content != ''))
+                query = query.filter(content_length > 0)
             else:
-                query = query.filter(or_(Article.content.is_(None), Article.content == ''))
+                query = query.filter(or_(Article.content.is_(None), content_length <= 0))
         if search:
             query = query.filter(format_search_kw(search))
         
@@ -500,7 +503,7 @@ async def get_articles(
         results = query.all()
         
         # 打印生成的 SQL 语句（包含分页参数）
-        print_warning(query.statement.compile(compile_kwargs={"literal_binds": True}))
+        # print_warning(query.statement.compile(compile_kwargs={"literal_binds": True}))
                        
         # 查询公众号名称
         from core.models.feed import Feed

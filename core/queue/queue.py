@@ -5,8 +5,9 @@ import gc
 import json
 from typing import Callable, Any, Optional
 from datetime import datetime
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from core.print import print_error, print_info, print_warning, print_success
+from core.redis_client import redis_client as global_redis_client
 
 # Redis 键前缀 - 主队列（文章列表采集）
 REDIS_KEY_PREFIX = "werss:queue"
@@ -21,9 +22,6 @@ CONTENT_REDIS_KEY_PENDING = f"{CONTENT_REDIS_KEY_PREFIX}:pending"
 CONTENT_REDIS_KEY_CURRENT = f"{CONTENT_REDIS_KEY_PREFIX}:current"
 CONTENT_REDIS_KEY_HISTORY = f"{CONTENT_REDIS_KEY_PREFIX}:history"
 CONTENT_REDIS_KEY_STATUS = f"{CONTENT_REDIS_KEY_PREFIX}:status"
-
-# 全局 Redis 客户端（延迟初始化）
-_redis_client = None
 
 # 全局队列实例引用（用于广播）
 _task_queue_instance = None
@@ -53,34 +51,19 @@ def get_all_queues_status() -> dict:
 
 
 def _get_redis():
-    """获取 Redis 客户端（延迟初始化）"""
-    global _redis_client
-    if _redis_client is not None:
-        return _redis_client
-    
+    """获取 Redis 客户端（复用全局 redis_client 单例）"""
     try:
-        import redis
-        from core.config import cfg
-        
-        redis_url = cfg.get("redis.url", "")
-        if not redis_url:
-            print_info("Redis URL 未配置，队列状态将仅在进程内共享")
-            return None
-        
-        _redis_client = redis.from_url(
-            redis_url,
-            decode_responses=True,
-            socket_connect_timeout=5,
-            socket_timeout=5,
-            retry_on_timeout=True
-        )
-        # 测试连接
-        _redis_client.ping()
-        print_info("Queue Redis 连接成功")
-        return _redis_client
+        if global_redis_client.is_connected:
+            return global_redis_client._client
+
+        if global_redis_client.reconnect():
+            print_info("Queue Redis 连接成功")
+            return global_redis_client._client
+
+        print_info("Redis 未连接，队列状态将仅在进程内共享")
+        return None
     except Exception as e:
         print_error(f"Queue Redis 连接失败: {e}")
-        _redis_client = None
         return None
 
 

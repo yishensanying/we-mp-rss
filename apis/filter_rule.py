@@ -354,8 +354,6 @@ def get_filter_rules_for_mp(mp_id: str) -> list:
             FilterRule.status == DATA_STATUS.ACTIVE
         ).order_by(FilterRule.priority.desc()).all()
 
-        print(f"[FilterRule] 查询到 {len(rules)} 条启用的规则")
-
         # 在 Python 层面过滤匹配的规则
         matched_rules = []
         for rule in rules:
@@ -383,9 +381,6 @@ def get_filter_rules_for_mp(mp_id: str) -> list:
             if is_match:
                 print(f"[FilterRule] 匹配规则: {rule.rule_name}, mp_id={mp_id}, rule_mp_ids={mp_ids}, is_global={is_global}")
                 matched_rules.append(rule)
-            else:
-                print(f"[FilterRule] 跳过规则: {rule.rule_name}, mp_id={mp_id}, rule_mp_ids={mp_ids}")
-
         print(f"[FilterRule] 为公众号 {mp_id} 找到 {len(matched_rules)} 条规则")
         return matched_rules
     except Exception as e:

@@ -57,8 +57,32 @@ class MpsAppMsg(WxGather):
             time.sleep(random.randint(0,interval))
             try:
                 headers = self.fix_header(url)
-                resp = session.get(url, headers=headers, params = params, verify=False)
-                
+                resp = None
+                last_request_error = None
+                for retry_idx in range(self.request_max_retries + 1):
+                    try:
+                        resp = session.get(
+                            url,
+                            headers=headers,
+                            params=params,
+                            verify=False,
+                            timeout=(self.request_connect_timeout, self.request_read_timeout),
+                        )
+                        break
+                    except requests.exceptions.Timeout as e:
+                        last_request_error = e
+                        print(f"[{Mps_title}]第{i+1}页请求超时(第{retry_idx + 1}次)")
+                    except requests.exceptions.RequestException as e:
+                        last_request_error = e
+                        print(f"[{Mps_title}]第{i+1}页请求异常(第{retry_idx + 1}次): {e}")
+                    if retry_idx < self.request_max_retries:
+                        time.sleep(min(2 * (retry_idx + 1), 5))
+
+                if resp is None:
+                    raise requests.exceptions.RequestException(
+                        f"[{Mps_title}]第{i+1}页请求失败，超过最大重试次数: {last_request_error}"
+                    )
+
                 msg = resp.json()
                 self._cookies =resp.cookies
                 # 流量控制了, 退出
@@ -91,7 +115,7 @@ class MpsAppMsg(WxGather):
                                     if Gather_Content:
                                         if not super().HasGathered(item["aid"]):
                                             item["content"] = self.content_extract(item['link'])
-                                            super().Wait(3,10,tips=f"{item['title']} 采集完成")
+                                            super().Wait(3,10,tips=f"[{Mps_title}]：《{item['title']}》 采集完成，")
                                     else:
                                         item["content"] = ""
                                     item["id"] = item["aid"]

@@ -2,6 +2,7 @@ from sqlalchemy import create_engine, Engine,Text,event, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base,scoped_session
 from sqlalchemy import Column, Integer, String, DateTime
 from typing import Optional, List
+import logging
 from .models import Feed, Article
 from .config import cfg, get_db_url, get_db_connect_args
 from core.models.base import Base  
@@ -29,6 +30,11 @@ class Db:
     def init(self, con_str: str, connect_args: dict = None) -> None:
         """Initialize database connection and create tables"""
         try:
+            # 全局日志常为 INFO，显式压低 SQLAlchemy 日志级别，避免每条 SQL 都打印
+            logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+            logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+            logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
+
             self.connection_str=con_str
             self._connect_args = connect_args or {}
             # 检查SQLite数据库文件是否存在

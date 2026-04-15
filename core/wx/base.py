@@ -72,7 +72,10 @@ class WxGather:
         self._cookies={}
         self.start_time = None  # 记录开始时间
         session=  requests.Session()
-        timeout = (5, 10)  
+        self.request_connect_timeout = int(cfg.get("gather.request_connect_timeout", 8))
+        self.request_read_timeout = int(cfg.get("gather.request_read_timeout", 20))
+        self.request_max_retries = int(cfg.get("gather.request_max_retries", 2))
+        timeout = (self.request_connect_timeout, self.request_read_timeout)
         session.timeout = timeout # type: ignore
         self.session=session
         self.get_token()
@@ -169,7 +172,12 @@ class WxGather:
             
             # 使用HTTP代理或直连
             proxies = self._get_proxies()
-            r = session.get(url, headers=headers, proxies=proxies)
+            r = session.get(
+                url,
+                headers=headers,
+                proxies=proxies,
+                timeout=(self.request_connect_timeout, self.request_read_timeout),
+            )
             if r.status_code == 200:
                 text = r.text
                 text=self.remove_common_html_elements(text)
@@ -178,7 +186,10 @@ class WxGather:
         return text
     def Wait(self,min=10,max=60,tips:str=""):
         wait=random.randint(min,max)
-        print_warning(f"{tips}等待{wait}秒后继续...")
+        prefix = str(tips or "")
+        if prefix and not prefix.endswith(("，", ",", " ")):
+            prefix = f"{prefix} "
+        print_warning(f"{prefix}等待{wait}秒后继续...")
         time.sleep(wait)
 
     def FillBack(self,CallBack=None,data=None,Ext_Data=None):

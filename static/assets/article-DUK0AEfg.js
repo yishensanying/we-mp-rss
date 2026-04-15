@@ -1,0 +1,1 @@
+import{l as e}from"./http-DyJMf1cd.js";export{e as getArticles};
