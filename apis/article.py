@@ -627,18 +627,7 @@ def get_article_detail(
                     message="文章不存在"
                 )
             )
-        if content:
-            updated, _ = sync_article_content(
-                session=session,
-                article=article,
-                preferred_mode=cfg.get("gather.content_mode", "web"),
-            )
-            if updated:
-                clear_cache_pattern("articles_list")
-                clear_cache_pattern("article_detail")
-                clear_cache_pattern("home_page")
-                clear_cache_pattern("tag_detail")
-        return success_response(fix_article(article))
+        return success_response(article)
     except HTTPException as e:
         raise e
     except Exception as e:
