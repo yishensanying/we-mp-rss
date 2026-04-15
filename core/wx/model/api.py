@@ -48,7 +48,7 @@ class MpsApi(WxGather):
                 break
             begin = i * count
             params["begin"] = str(begin)
-            print(f"第{i+1}页开始爬取\n")
+            print(f"[{Mps_title}]第{i+1}页开始爬取\n")
             # 随机暂停几秒，避免过快的请求导致过快的被查到
             time.sleep(random.randint(0,interval))
             try:
@@ -94,14 +94,14 @@ class MpsApi(WxGather):
 
                         if CallBack is not None:
                             super().FillBack(CallBack=CallBack,data=item,Ext_Data={"mp_title":Mps_title,"mp_id":Mps_id})
-                    print(f"第{i+1}页爬取成功\n")
+                    print(f"[{Mps_title}]第{i+1}页爬取成功\n")
                 # 翻页
                 i += 1
             except requests.exceptions.Timeout:
-                print("Request timed out")
+                print(f"[{Mps_title}]第{i+1}页爬取 Request timed out")
                 break
             except requests.exceptions.RequestException as e:
-                print(f"Request error: {e}")
+                print(f"[{Mps_title}]第{i+1}页爬取 Request error: {e}")
                 break
             finally:
                 super().Item_Over(item={"mps_id":Mps_id,"mps_title":Mps_title},CallBack=Item_Over_CallBack)

@@ -172,8 +172,88 @@ def set_config(key:str,value:str):
     cfg.set(key,value)
 def save_config():
     cfg.save_config()
-    
-DEBUG=cfg.get("debug",False)
-APP_NAME=cfg.get("app_name","we-mp-rss")
+
+def _is_oracle_tns(url: str) -> bool:
+    """判断 Oracle URL 是否为 TNS 描述符格式（如 ADDRESS_LIST）"""
+    return url.lstrip().startswith("(")
+
+
+def _decrypt_db_password(password: str) -> str:
+    """解密数据库密码，兼容 encrypt_ 前缀的 Blowfish 加密密码。
+    如果密码以 'encrypt_' 开头则解密，否则原样返回。
+    """
+    try:
+        from core.decrypt_util import decrypt_pwd
+        return decrypt_pwd(password)
+    except ImportError:
+        if password.startswith("encrypt_"):
+            print_warning("密码以 encrypt_ 开头但 pycryptodome 未安装，无法解密，请安装: pip install pycryptodome")
+        return password
+
+
+def get_db_url() -> str:
+    """从 db 配置构建 SQLAlchemy 连接字符串。
+    兼容旧格式（db 为完整连接字符串）和新格式（db 为分字段字典）。
+    密码支持 encrypt_ 前缀的 Blowfish 加密格式，自动解密。
+    Oracle 支持两种 url 格式：
+      - 简单格式: host:port/service_name  (如 10.89.185.151:1521/AMDB)
+      - TNS 描述符: (DESCRIPTION=(ADDRESS_LIST=...)(CONNECT_DATA=...))
+    当使用 TNS 描述符时，用户名/密码通过 connect_args 传递，需配合 get_db_connect_args() 使用。
+    """
+    db_cfg = cfg.get("db", "")
+    if isinstance(db_cfg, str):
+        return db_cfg
+
+    db_type = str(db_cfg.get("type", "sqlite")).strip().lower()
+    url = str(db_cfg.get("url", "")).strip()
+    user = str(db_cfg.get("user", "")).strip()
+    password = _decrypt_db_password(str(db_cfg.get("password", "")).strip())
+
+    if db_type == "sqlite":
+        return f"sqlite:///{url}"
+    elif db_type == "mysql":
+        return f"mysql+pymysql://{user}:{password}@{url}"
+    elif db_type in ("postgresql", "postgres"):
+        return f"postgresql://{user}:{password}@{url}"
+    elif db_type == "oracle":
+        if _is_oracle_tns(url):
+            return "oracle+oracledb://"
+        return f"oracle+oracledb://{user}:{password}@{url}"
+    else:
+        return f"{db_type}://{user}:{password}@{url}"
+
+
+def get_db_connect_args() -> dict:
+    """获取数据库 connect_args，主要用于 Oracle TNS 描述符连接方式。
+    当 db.url 为 TNS 描述符时，返回包含 user/password/dsn 的字典；
+    否则返回空字典。密码支持 encrypt_ 前缀的 Blowfish 加密格式。
+    """
+    db_cfg = cfg.get("db", "")
+    if isinstance(db_cfg, str):
+        return {}
+
+    db_type = str(db_cfg.get("type", "sqlite")).strip().lower()
+    url = str(db_cfg.get("url", "")).strip()
+
+    if db_type == "oracle" and _is_oracle_tns(url):
+        user = str(db_cfg.get("user", "")).strip()
+        password = _decrypt_db_password(str(db_cfg.get("password", "")).strip())
+        return {
+            "user": user,
+            "password": password,
+            "dsn": url,
+        }
+    return {}
+
+def get_debug():
+    return cfg.get("debug", False)
+
+def get_app_name():
+    return cfg.get("app_name", "gf-we-mp-rss")
+
+# 保留向后兼容的模块级引用（import 时求值一次，disconf reload 后不更新）
+DEBUG = get_debug()
+APP_NAME = get_app_name()
+
 from core.base import *
-print(f"名称:{APP_NAME}\n版本:{VERSION} API_BASE:{API_BASE}")
+print(f"名称:{get_app_name()}\n版本:{VERSION} API_BASE:{API_BASE}")

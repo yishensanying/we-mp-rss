@@ -5,6 +5,7 @@ import os
 import portalocker
 from core.task import TaskScheduler
 from driver.success import Success
+from core.config import cfg
 
 def auth():
     def run_auth():
@@ -16,8 +17,20 @@ def auth():
     thread.start()
     thread.join()  # 可选：等待完成
 def start_auth_service():    
-    from driver.wx_api import login_with_token
-    login_with_token()
+    # 启动时是否执行微信预鉴权，默认开启，可通过环境变量关闭
+    enable_startup_auth = str(os.getenv("WE_RSS.STARTUP_AUTH", "True")).lower() == "true"
+    is_web_auth = bool(cfg.get("server.auth_web", False))
+
+    # Web认证模式走浏览器流程，启动时不应调用wx_api的网络鉴权
+    if enable_startup_auth and not is_web_auth:
+        from driver.wx_api import login_with_token
+        try:
+            login_with_token()
+        except Exception as e:
+            # 微信外部网络异常不应阻塞系统主服务启动
+            print_warning(f"启动时微信token鉴权失败，已跳过: {e}")
+    else:
+        print_warning("已跳过启动阶段微信预鉴权")
     if str(os.getenv('WE_RSS.AUTH',False))=="True":
         print_warning("启动授权定时任务")
         auth_task=TaskScheduler()

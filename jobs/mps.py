@@ -6,7 +6,7 @@ from core.wx import WxGather
 from core.log import logger
 from core.task import TaskScheduler
 from core.models.feed import Feed
-from core.config import cfg,DEBUG
+from core.config import cfg
 from core.print import print_info,print_success,print_error
 from driver.wx import WX_API
 from driver.success import Success

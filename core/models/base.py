@@ -4,9 +4,9 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime,Date,For
 from sqlalchemy import inspect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.types import TypeDecorator
-from core.config import cfg
+from core.config import cfg, get_db_url
 
-_db_url = cfg.get("db", "")
+_db_url = get_db_url()
 if _db_url.startswith("mysql"):
     from sqlalchemy.dialects.mysql import MEDIUMTEXT as Text
 elif _db_url.startswith("oracle"):

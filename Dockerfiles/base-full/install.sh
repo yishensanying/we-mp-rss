@@ -57,7 +57,7 @@ fi
 ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 
 PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-$PLANT_PATH/driver/_$plantform}
-BROWSER_TYPE=${BROWSER_TYPE:-webkit}
+BROWSER_TYPE=${BROWSER_TYPE:-firefox}
 echo "export PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH}
 export TZ=Asia/Shanghai
 export BROWSER_TYPE=${BROWSER_TYPE}">/app/environment.sh

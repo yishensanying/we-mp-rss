@@ -3,7 +3,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base,scoped_session
 from sqlalchemy import Column, Integer, String, DateTime
 from typing import Optional, List
 from .models import Feed, Article
-from .config import cfg
+from .config import cfg, get_db_url, get_db_connect_args
 from core.models.base import Base  
 from core.print import print_warning,print_info,print_error,print_success
 # 声明基类
@@ -14,10 +14,11 @@ class Db:
     def __init__(self,tag:str="默认",User_In_Thread=True):
         self.Session= None
         self.engine = None
+        self._connect_args = {}
         self.User_In_Thread=User_In_Thread
         self.tag=tag
         print_success(f"[{tag}]连接初始化")
-        self.init(cfg.get("db"))
+        self.init(get_db_url(), get_db_connect_args())
     def get_engine(self) -> Engine:
         """Return the SQLAlchemy engine for this database connection."""
         if self.engine is None:
@@ -25,10 +26,11 @@ class Db:
         return self.engine
     def get_session_factory(self):
         return sessionmaker(bind=self.engine, autoflush=True, expire_on_commit=True, future=True)
-    def init(self, con_str: str) -> None:
+    def init(self, con_str: str, connect_args: dict = None) -> None:
         """Initialize database connection and create tables"""
         try:
             self.connection_str=con_str
+            self._connect_args = connect_args or {}
             # 检查SQLite数据库文件是否存在
             if con_str.startswith('sqlite:///'):
                 import os
@@ -55,6 +57,8 @@ class Db:
                 engine_kwargs["pool_recycle"] = 1800
                 engine_kwargs["pool_pre_ping"] = True
                 engine_kwargs["thick_mode"] = False
+                if self._connect_args:
+                    engine_kwargs["connect_args"] = self._connect_args
 
             self.engine = create_engine(con_str, **engine_kwargs)
             self.session_factory=self.get_session_factory()
@@ -324,7 +328,7 @@ class Db:
         except Exception as e:
             from core.print import print_warning
             print_warning(f"[{self.tag}] Database connection lost: {e}. Reconnecting...")
-            self.init(self.connection_str)
+            self.init(self.connection_str, self._connect_args)
             _session()
             return self.Session()
         return session
@@ -346,4 +350,4 @@ class Db:
 
 # 全局数据库实例
 DB = Db(User_In_Thread=True)
-DB.init(cfg.get("db"))
+DB.init(get_db_url(), get_db_connect_args())

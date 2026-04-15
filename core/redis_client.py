@@ -1,16 +1,32 @@
-"""Redis客户端工具类"""
+"""Redis客户端工具类，支持 standalone 和 sentinel 两种部署模式"""
 import redis
-from typing import Optional, Dict, Any
+from redis.sentinel import Sentinel
+from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime
 from core.config import cfg
 from core.print import print_error, print_info, print_warning
 
 
+def _parse_sentinel_hosts(hosts_str: str) -> List[Tuple[str, int]]:
+    """解析逗号分隔的 sentinel 地址列表，如 '10.89.185.20:26379,10.89.185.21:26379'"""
+    result = []
+    for item in hosts_str.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        host, port = item.rsplit(":", 1)
+        result.append((host.strip(), int(port.strip())))
+    return result
+
+
 class RedisClient:
-    """Redis客户端封装类"""
+    """Redis客户端封装类，支持 standalone / sentinel 两种模式。
+    采用懒加载：import 时不创建连接，首次实际使用时才读取配置并连接。
+    """
     
     _instance: Optional['RedisClient'] = None
     _client: Optional[redis.Redis] = None
+    _initialized: bool = False
     
     def __new__(cls):
         """单例模式"""
@@ -19,39 +35,27 @@ class RedisClient:
         return cls._instance
     
     def __init__(self):
-        """初始化Redis连接"""
-        if self._client is not None:
+        pass
+
+    def _ensure_connected(self):
+        """懒加载：首次调用时读取 cfg 并建立连接，之后不再重复执行。"""
+        if self._initialized:
             return
 
-        # 分字段配置，避免 URL 编码问题
-        host = str(cfg.get("redis.host", "")).strip()
-        port = int(cfg.get("redis.port", 6379))
+        self._initialized = True
+
+        deploy_mode = str(cfg.get("redis.deploy_mode", "standalone")).strip().lower()
         db = int(cfg.get("redis.db", 0))
         password = str(cfg.get("redis.password", "")).strip()
         ssl = str(cfg.get("redis.ssl", "False")).strip().lower() in ("true", "1", "yes", "y")
-
-        # 如果未配置 host，则认为未启用 Redis
-        if not host:
-            print_info("Redis 未配置，统计功能将禁用")
-            return
+        socket_timeout = int(cfg.get("redis.socket_timeout", 5))
+        connect_timeout = int(cfg.get("redis.connect_timeout", 5))
 
         try:
-            # 使用分字段方式创建客户端，密码无需进行 URL 编码
-            self._client = redis.Redis(
-                host=host,
-                port=port,
-                db=db,
-                password=password or None,
-                ssl=ssl,
-                decode_responses=True,
-                socket_connect_timeout=5,
-                socket_timeout=5,
-                retry_on_timeout=True,
-                health_check_interval=30,
-            )
-            # 测试连接
-            self._client.ping()
-            print_info("Redis连接成功")
+            if deploy_mode == "sentinel":
+                self._init_sentinel(db, password, ssl, socket_timeout, connect_timeout)
+            else:
+                self._init_standalone(db, password, ssl, socket_timeout, connect_timeout)
         except redis.exceptions.ConnectionError as e:
             print_error(f"Redis连接失败 - 无法连接到Redis服务")
             print_error(f"  错误详情: {e}")
@@ -59,7 +63,6 @@ class RedisClient:
             print_error(f"    1. Redis服务是否已启动")
             print_error(f"    2. 配置的地址和端口是否正确")
             print_error(f"    3. 防火墙是否允许连接")
-            print_error(f"  运行诊断: python diagnose_redis.py")
             self._client = None
         except redis.exceptions.AuthenticationError as e:
             print_error(f"Redis连接失败 - 认证错误")
@@ -74,28 +77,77 @@ class RedisClient:
         except Exception as e:
             print_error(f"Redis连接失败: {type(e).__name__} - {e}")
             self._client = None
+
+    def _init_standalone(self, db, password, ssl, socket_timeout, connect_timeout):
+        """standalone 模式：直连单个 Redis 实例"""
+        host = str(cfg.get("redis.host", "")).strip()
+        port = int(cfg.get("redis.port", 6379))
+
+        if not host:
+            print_info("Redis 未配置 host，统计功能将禁用")
+            return
+
+        print_info(f"Redis standalone 模式: {host}:{port}")
+        self._client = redis.Redis(
+            host=host,
+            port=port,
+            db=db,
+            password=password or None,
+            ssl=ssl,
+            decode_responses=True,
+            socket_connect_timeout=connect_timeout,
+            socket_timeout=socket_timeout,
+            retry_on_timeout=True,
+            health_check_interval=30,
+        )
+        self._client.ping()
+        print_info("Redis连接成功 (standalone)")
+
+    def _init_sentinel(self, db, password, ssl, socket_timeout, connect_timeout):
+        """sentinel 模式：通过哨兵发现 master 并连接"""
+        sentinel_hosts_str = str(cfg.get("redis.sentinel_hosts", "")).strip()
+        master_name = str(cfg.get("redis.master_name", "mymaster")).strip()
+
+        if not sentinel_hosts_str:
+            print_error("Redis sentinel 模式已启用，但未配置 sentinel_hosts")
+            return
+
+        sentinel_hosts = _parse_sentinel_hosts(sentinel_hosts_str)
+        print_info(f"Redis sentinel 模式: master={master_name}, sentinels={sentinel_hosts}")
+
+        sentinel = Sentinel(
+            sentinel_hosts,
+            password=password or None,
+            db=db,
+            socket_timeout=socket_timeout,
+            socket_connect_timeout=connect_timeout,
+            decode_responses=True,
+        )
+        self._client = sentinel.master_for(
+            master_name,
+            password=password or None,
+            db=db,
+            socket_timeout=socket_timeout,
+            decode_responses=True,
+        )
+        self._client.ping()
+        print_info(f"Redis连接成功 (sentinel, master={master_name})")
     
     def reconnect(self) -> bool:
-        """重新连接Redis
+        """重置并重新连接 Redis（使用当前最新的 cfg 配置）。
         
         Returns:
             是否重新连接成功
         """
-        if self._client is not None:
-            try:
-                self._client.ping()
-                return True
-            except:
-                pass
-        
-        # 重置客户端
         self._client = None
-        self.__init__()
+        self._initialized = False
+        self._ensure_connected()
         return self.is_connected
     
     @property
     def is_connected(self) -> bool:
         """检查Redis是否已连接"""
+        self._ensure_connected()
         return self._client is not None
     
     def record_env_exception(self, url: str, mp_name: str = "", mp_id: str = "") -> bool:
@@ -109,10 +161,9 @@ class RedisClient:
         Returns:
             是否记录成功
         """
-        if not self.is_connected:
-            # 尝试重新连接
-            if not self.reconnect():
-                return False
+        self._ensure_connected()
+        if self._client is None:
+            return False
             
         try:
             today = datetime.now().strftime("%Y-%m-%d")
@@ -179,7 +230,8 @@ class RedisClient:
             "recent_logs": []
         }
         
-        if not self.is_connected:
+        self._ensure_connected()
+        if self._client is None:
             print_warning("Redis未连接，返回默认统计信息")
             return default_stats
             

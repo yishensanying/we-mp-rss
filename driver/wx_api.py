@@ -809,6 +809,11 @@ class WeChatAPI:
 
                 token=token or get_token("token")
                 cookies=cookies or self._cookie_string_to_dict(get_token("cookie"))
+                # 无token时直接返回，避免启动阶段做不必要的外网请求
+                if token=="" or token is None:
+                    print_warning("未登录，请扫码")
+                    return False
+
                 print(f"token: {token}")
                 self.token = token
                 
@@ -817,11 +822,8 @@ class WeChatAPI:
                     self.cookies = cookies
                 
                 # 验证登录状态
-                response = self.session.get(f"{self.home_url}?token={token}")
+                response = self.session.get(f"{self.home_url}?token={token}", timeout=60)
                 response.raise_for_status()
-                if token=="" or token is None:
-                    print_warning("未登录，请扫码")
-                    return False
                
                 if 'home'  in response.url:
                     self.is_logged_in = True
@@ -833,7 +835,6 @@ class WeChatAPI:
                     
         except Exception as e:
             logger.error(f"Token登录失败: {str(e)}")
-            raise e
             return False
 
     def logout(self):

@@ -1,5 +1,6 @@
 from logging.handlers import RotatingFileHandler
 import logging
+import os
 try:
     import colorlog
 except ImportError:
@@ -24,11 +25,15 @@ if level=="CRITICAL":
 
 
 
-# 创建文件处理器，每天一个文件，保留7天备份
-if len(log_filer)<=0:
+# 创建文件处理器，保留 7 个滚动备份（config 示例已带 .log 后缀，避免重复拼接）
+if len(log_filer) <= 0:
     handler = logging.NullHandler()
 else:
-    handler = RotatingFileHandler(f'{log_filer}.log', maxBytes=1024*1024, backupCount=7)
+    log_path = log_filer if str(log_filer).endswith(".log") else f"{log_filer}.log"
+    log_dir = os.path.dirname(log_path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+    handler = RotatingFileHandler(log_path, maxBytes=1024 * 1024, backupCount=7)
 handler.setLevel(logging.DEBUG)
 
 # 创建控制台处理器

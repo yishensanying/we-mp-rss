@@ -1,0 +1,57 @@
+containers:
+-
+  image: $CCE_IMAGE
+  env:
+  - name: APP_ENV
+    value: prod
+  - name: PYTHONPATH
+    value: /app
+  - name: TZ
+    value: Asia/Shanghai
+  - name: DISCONF_ENV
+    value: $DISCONF_ENV
+  - name: DISCONF_VERSION
+    value: $DISCONF_VERSION
+  - name: DISCONF_HOST
+    value: $DISCONF_HOST
+  cpuLimit: $cpuLimit
+  memoryLimit: $memoryLimit
+  livenessProbe:
+   tcpPort: 8001
+  readinessProbe:
+   tcpPort: 8001
+  ports:
+  - containerPort: 8001
+    name: http
+    protocol: TCP
+hostAliases:
+- ip: $oracledbhost
+  hostnames:
+  - oracledbhost
+- ip: $m_gffunds_com_cn
+  hostnames:
+  - m.gffunds.com.cn
+- ip: $disconf
+  hostnames:
+  - disconf
+- ip: $cuidcam_scan
+  hostnames:
+  - cuidcam-scan
+- ip: $ctidcam_scan
+  hostnames:
+  - ctidcam-scan
+- ip: $zookeeper_mc1
+  hostnames:
+  - zookeeper-mc1
+- ip: $zookeeper_mc2
+  hostnames:
+  - zookeeper-mc2
+servicePorts:
+- nodePort: $nodePort
+  protocol: TCP
+  containerPort: 8001
+dns:
+  - containerPort: 8001
+    hostname: $CCE_DEPLOYMENT
+    aliases:
+      - $aliases

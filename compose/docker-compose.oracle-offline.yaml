@@ -1,0 +1,23 @@
+services:
+  we-mp-rss:
+    image: we-mp-rss:prod-offline
+    container_name: we-mp-rss
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DB: ${DB}
+      USERNAME: ${USERNAME:-admin}
+      PASSWORD: ${PASSWORD:-admin@123}
+      ENABLE_JOB: ${ENABLE_JOB:-True}
+      AUTO_RELOAD: ${AUTO_RELOAD:-False}
+      PROXY_ENABLED: "False"
+      PROXY_HTTP_URL: ""
+      PROXY_DENO_URL: ""
+      TZ: ${TZ:-Asia/Shanghai}
+      PORT: ${PORT:-8001}
+    ports:
+      - "${PORT:-8001}:8001"
+    volumes:
+      - ../data:/app/data
+      - ../config.yaml:/app/config.yaml

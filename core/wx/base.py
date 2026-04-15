@@ -299,7 +299,7 @@ class WxGather:
         _cookies.append({'name':'token','value':self.token})
         if CallBack is not None:
             CallBack(item)
-        self.Wait(tips=f"{item['mps_title']} 处理完成",min=3,max=10)
+        self.Wait(tips=f"{item['mps_title']} 处理完成，",min=3,max=10)
         pass
     def Error(self,error:str,code=None):
         self.Over()
@@ -310,9 +310,11 @@ class WxGather:
             from core.queue import TaskQueue
             TaskQueue.clear_queue()
             import os
-            if str(os.getenv('WE_RSS.AUTH',False))!="True" and cfg.get("server.send_code")=="True":
-                threading.Thread(target=send_wx_code,args=(f"公众号平台登录失效,请重新登录",)).start()
-                send_wx_code(f"公众号平台登录失效,请重新登录")
+            # 与 jobs.failauth 一致：YAML 中多为布尔 true，不能与字符串 "True" 比较
+            if str(os.getenv('WE_RSS.AUTH', False)) != "True" and cfg.get("server.send_code", False):
+                threading.Thread(
+                    target=send_wx_code, args=("公众号平台登录失效,请重新登录",)
+                ).start()
             raise Exception(error)
         # raise Exception(error)
         print_error(error)

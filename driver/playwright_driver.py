@@ -13,10 +13,24 @@ from urllib.parse import urlparse, unquote
 
 from core.print import print_error
 
-# 设置环境变量
+
+def _resolve_playwright_browsers_path() -> str:
+    """与 install.sh 约定一致：未显式设置时尝试 PLANT_PATH/driver/_$(uname -m)。"""
+    explicit = (os.getenv("PLAYWRIGHT_BROWSERS_PATH") or "").strip()
+    if explicit:
+        return explicit
+    plant = (os.getenv("PLANT_PATH", "/app/env") or "/app/env").rstrip("/")
+    candidate = f"{plant}/driver/_{platform.machine()}"
+    if os.path.isdir(candidate):
+        return candidate
+    return ""
+
+
+# 设置环境变量（勿写入空串，否则仍会落到 ~/.cache/ms-playwright）
 browsers_name = os.getenv("BROWSER_TYPE", "firefox")
-browsers_path = os.getenv("PLAYWRIGHT_BROWSERS_PATH", "")
-os.environ['PLAYWRIGHT_BROWSERS_PATH'] = browsers_path
+browsers_path = _resolve_playwright_browsers_path()
+if browsers_path:
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browsers_path
 
 # 导入Playwright相关模块
 from playwright.sync_api import sync_playwright
@@ -72,7 +86,8 @@ class PlaywrightController:
     def _is_browser_installed(self, browser_name):
         """检查指定浏览器是否已安装"""
         try:
-            
+            if not browsers_path:
+                return False
             # 遍历目录，查找包含浏览器名称的目录
             for item in os.listdir(browsers_path):
                 item_path = os.path.join(browsers_path, item)
@@ -172,7 +187,13 @@ class PlaywrightController:
             #     self.page.set_viewport_size({"width": 1920, "height": 1080})
 
             if dis_image:
-                self.context.route("**/*.{png,jpg,jpeg}", lambda route: route.abort())
+                def _block_images(route):
+                    url = route.request.url
+                    if "mp.weixin.qq.com" in url or "wx.qq.com" in url:
+                        route.continue_()
+                    else:
+                        route.abort()
+                self.context.route("**/*.{png,jpg,jpeg}", _block_images)
 
             # 应用反爬虫脚本
             if anti_crawler:
@@ -295,40 +316,29 @@ class PlaywrightController:
         #     stealth.apply_stealth_sync(self.page)
         
         """应用反爬虫脚本"""
-        # 隐藏自动化特征
+        # 隐藏自动化特征（使用 try/catch 兼容 WebKit 的 unconfigurable 属性限制）
         self.page.add_init_script("""
-        // 隐藏webdriver属性
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => false,
-        });
-        
-        // 隐藏chrome属性
-        Object.defineProperty(window, 'chrome', {
-            get: () => false,
-        });
-        
-        // 修改plugins长度
-        Object.defineProperty(navigator, 'plugins', {
-            get: () => [1, 2, 3, 4, 5],
-        });
-        
-        // 修改languages
-        Object.defineProperty(navigator, 'languages', {
-            get: () => ['zh-CN', 'zh', 'en'],
-        });
-        
-        // 隐藏自动化痕迹
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => false,
-        });
-        
-        // 修改permissions
-        const originalQuery = window.navigator.permissions.query;
-        window.navigator.permissions.query = (parameters) => (
-            parameters.name === 'notifications' ?
-                Promise.resolve({ state: Notification.permission }) :
-                originalQuery(parameters)
-        );
+        function safeDefineProperty(obj, prop, descriptor) {
+            try {
+                Object.defineProperty(obj, prop, descriptor);
+            } catch (e) {}
+        }
+
+        safeDefineProperty(navigator, 'webdriver', { get: () => false });
+        safeDefineProperty(window, 'chrome', { get: () => false });
+        safeDefineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        safeDefineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en'] });
+
+        try {
+            const originalQuery = window.navigator.permissions.query;
+            if (originalQuery) {
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications'
+                        ? Promise.resolve({ state: Notification.permission })
+                        : originalQuery(parameters)
+                );
+            }
+        } catch (e) {}
         """)
       
         # 设置更真实的浏览器行为
@@ -365,11 +375,40 @@ class PlaywrightController:
             # 析构函数中避免抛出异常
             pass
 
-    def open_url(self, url, wait_until="domcontentloaded", timeout_ms=30000):
+    def open_url(self, url, wait_until="domcontentloaded", timeout_ms=90000):
         try:
-            self.page.goto(url, wait_until=wait_until, timeout=timeout_ms)
+            response = self.page.goto(url, wait_until=wait_until, timeout=timeout_ms)
+            if response:
+                print(f"页面响应状态: {response.status}, URL: {response.url}")
+            else:
+                print("页面响应: None (可能被重定向或拦截)")
         except Exception as e:
+            self._dump_page_state(url)
             raise Exception(f"打开URL失败(超时{timeout_ms}ms): {str(e)}")
+
+    def _dump_page_state(self, target_url=""):
+        """页面加载失败时输出诊断信息"""
+        try:
+            current_url = self.page.url if self.page else "N/A"
+            print(f"[诊断] 目标URL: {target_url}")
+            print(f"[诊断] 当前URL: {current_url}")
+            try:
+                title = self.page.title()
+                print(f"[诊断] 页面标题: {title}")
+            except Exception:
+                print("[诊断] 页面标题: 获取失败")
+            try:
+                self.page.screenshot(path="static/debug_page.png", timeout=5000)
+                print("[诊断] 页面截图已保存到 static/debug_page.png")
+            except Exception as e2:
+                print(f"[诊断] 截图失败: {e2}")
+            try:
+                body_text = self.page.evaluate("() => document.body ? document.body.innerText.substring(0, 500) : 'body为空'")
+                print(f"[诊断] 页面文本: {body_text}")
+            except Exception:
+                print("[诊断] 页面文本: 获取失败")
+        except Exception as e:
+            print(f"[诊断] 诊断信息获取失败: {e}")
 
     def Close(self):
         self.cleanup()

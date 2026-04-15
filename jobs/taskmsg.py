@@ -1,9 +1,9 @@
 from typing import Union
 from core.db import Db
-from core.config import cfg
+from core.config import cfg, get_db_url, get_db_connect_args
 from core.models import MessageTask
 DB = Db()
-DB.init(cfg.get("db"))
+DB.init(get_db_url(), get_db_connect_args())
 def get_message_task(job_id:Union[str, list]=None) -> list[MessageTask]:
 
     """

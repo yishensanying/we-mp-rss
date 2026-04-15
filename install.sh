@@ -2,8 +2,12 @@
 plantform="$(uname -m)"
 PLANT_PATH=${PLANT_PATH:-/app/env}
 plant="${PLANT_PATH}_${plantform}"
-python3 -m venv $plant
-source $plant/bin/activate
+python3 -m venv "$plant" || echo "警告: 创建虚拟环境失败，继续使用系统Python"
+if [ -f "$plant/bin/activate" ]; then
+    source "$plant/bin/activate"
+else
+    echo "警告: 虚拟环境未创建成功，跳过activate"
+fi
 echo "使用虚拟环境: $plant"
 
 
@@ -44,20 +48,18 @@ if [ ${#missing_packages[@]} -eq 0 ]; then
 else
     echo "需要安装的包: ${missing_packages[*]}"
     echo "开始安装..."
-    apt update && apt install -y ${missing_packages[*]} --no-install-recommends\
-        && rm -rf /var/lib/apt/lists/*
-    if [ $? -eq 0 ]; then
-        echo "安装完成！"
+    if apt update && apt install -y ${missing_packages[*]} --no-install-recommends \
+        && rm -rf /var/lib/apt/lists/*; then
+        echo "系统依赖安装完成！"
     else
-        echo "安装失败！"
-        exit 1
+        echo "警告: apt安装失败，继续执行（请确认基础镜像已内置所需依赖）"
     fi
 fi
 
 ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 
 PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-${PLANT_PATH}/driver/_${plantform}}
-BROWSER_TYPE=${BROWSER_TYPE:-webkit}
+BROWSER_TYPE=${BROWSER_TYPE:-firefox}
 echo "export PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH}
 export TZ=Asia/Shanghai
 export BROWSER_TYPE=${BROWSER_TYPE}">/app/environment.sh
@@ -84,10 +86,14 @@ if [ -f "requirements.txt" ]; then
 fi 
 
 INSTALL=${INSTALL:-False}
-# 根据环境变量决定是否安装浏览器
+# 根据环境变量决定是否安装浏览器（CCE受限环境下失败时不阻断构建）
 if [ "$INSTALL" = True ]; then
     echo "INSTALL环境变量为$INSTALL，开始安装playwright浏览器..."
-    playwright install $BROWSER_TYPE --with-deps
+    if playwright install "$BROWSER_TYPE" --with-deps; then
+        echo "playwright浏览器安装完成"
+    else
+        echo "警告: playwright浏览器安装失败，继续执行（基础镜像已内置浏览器时可忽略）"
+    fi
 else
     echo "INSTALL环境变量为$INSTALL，跳过playwright浏览器安装"
 fi

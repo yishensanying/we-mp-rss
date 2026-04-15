@@ -5,6 +5,7 @@ import datetime
 from datetime import datetime, timezone
 # from core.config import cfg
 from .cfg import wx_cfg,cfg
+from core.config import get_db_url, get_db_connect_args
 import core.db as db
 
 def dateformat(timestamp:any):
@@ -144,7 +145,7 @@ def get_list(faker_id:str=None,mp_id:str=None,is_add:bool=False):
     try:
         data=data['publish_page']['publish_list']
         wx_db=db.Db(tag="获取公众号列表")
-        wx_db.init(cfg.get('db'))
+        wx_db.init(get_db_url(), get_db_connect_args())
         for i in data:
             art=i['publish_info']
             art=json.loads(art)

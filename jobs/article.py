@@ -1,14 +1,14 @@
 
 import core.wx as wx 
 import core.db as db
-from core.config import DEBUG,cfg
+from core.config import get_debug,cfg
 from core.models.article import Article
 
 DB=db.Db(tag="文章采集API")
 
 def UpdateArticle(art:dict,check_exist=True):
     mps_count=0
-    if DEBUG:
+    if get_debug():
         # DB.delete_article(art)
         pass
     if  DB.add_article(art,check_exist=check_exist):
