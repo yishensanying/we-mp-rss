@@ -505,6 +505,8 @@ class Web:
                     return ""
                 js_content_div.attrs.pop('style', None)
 
+               
+
                 # 1. 处理img标签，只保留src和style属性
                 img_tags = js_content_div.find_all('img')
                 for img_tag in img_tags:
@@ -534,11 +536,7 @@ class Web:
                         if style_value:
                             tag['style'] = style_value
 
-                # 2.1 将section标签替换为div标签
-                section_tags = js_content_div.find_all('section')
-                for section in section_tags:
-                    section.name = 'fragment'
-                    section.attrs['_source']="we-mp-rss"
+              
 
                 # 3. 处理背景类资源 (background-image, background等)
                 # 查找所有带有style属性的元素
@@ -602,11 +600,13 @@ class Web:
                                     else:
                                         element['style'] = f"{style};background-image: url(\"{data_src}\")"
 
+                section_tags = js_content_div.find_all('section')
+                for section in section_tags:
+                    section['powered-by'] = 'werss'
                 return  js_content_div.prettify()
             except Exception as e:
                 print_error(f"修复图片失败: {str(e)}")
             return content
-    @staticmethod
     def clean_article_content(html_content: str,mp_id:str=""):
         from tools.htmltools import htmltools
         html_content=Web.fix_images(html_content)
