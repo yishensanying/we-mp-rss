@@ -69,14 +69,30 @@ def process_single_article(art, add_title, remove_images, remove_links, export_m
                 document.save(temp_docx)
                 try:
                     from doc2pdf.dpdf import docx_to_pdf
-                    docx_to_pdf(temp_docx, f'{docx_path}{pdf_filename}')
+                    pdf_output_path = f'{docx_path}{pdf_filename}'
+                    docx_to_pdf(temp_docx, pdf_output_path)
+                    
+                    # 验证PDF文件是否生成
+                    if not os.path.exists(pdf_output_path):
+                        raise RuntimeError(f"PDF文件生成失败: {pdf_output_path}")
+                    
                     # 删除临时docx文件
                     os.remove(temp_docx)
+                    print_success(f"PDF文件已生成: {pdf_filename}")
+                except ImportError as e:
+                    print_error(f"PDF转换依赖缺失: {e}")
+                    # 删除临时文件
+                    if os.path.exists(temp_docx):
+                        os.remove(temp_docx)
+                    # 标记PDF导出失败
+                    export_pdf = False
                 except Exception as e:
                     print_error(f"PDF转换失败: {e}")
                     # 删除临时文件
                     if os.path.exists(temp_docx):
                         os.remove(temp_docx)
+                    # 标记PDF导出失败
+                    export_pdf = False
             
             # 保存为Word文档（仅在需要时）
             if export_docx and document:

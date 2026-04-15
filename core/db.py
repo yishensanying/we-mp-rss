@@ -41,7 +41,7 @@ class Db:
                     except Exception as e:
                         pass
                     open(db_path, 'w').close()
-
+            
             engine_kwargs = dict(
                 pool_size=2,
                 max_overflow=20,
@@ -61,6 +61,14 @@ class Db:
                     engine_kwargs["connect_args"] = self._connect_args
 
             self.engine = create_engine(con_str, **engine_kwargs)
+            
+			# 为 SQLite 设置 text_factory 处理无效 UTF-8 字符
+            if con_str.startswith('sqlite:///'):
+                @event.listens_for(self.engine, "connect")
+                def set_sqlite_text_factory(dbapi_conn, connection_record):
+                    # 将无效 UTF-8 字符替换为 �
+                    dbapi_conn.text_factory = lambda x: x.decode('utf-8', errors='replace')
+            
             self.session_factory=self.get_session_factory()
             self.ensure_article_columns()
         except Exception as e:
@@ -81,7 +89,7 @@ class Db:
             if not alter_statements:
                 return
 
-            with self.engine.begin() as conn:
+            with self.engine.begin() as conn: # type: ignore
                 for stmt in alter_statements:
                     conn.execute(text(stmt))
 
@@ -100,9 +108,9 @@ class Db:
         
     def close(self) -> None:
         """Close the database connection"""
-        if self.SESSION:
-            self.SESSION.close()
-            self.SESSION.remove()
+        if self.Session:
+            self.Session.close() # type: ignore
+            self.Session.remove() # type: ignore
             
     def __enter__(self):
         return self
@@ -112,8 +120,8 @@ class Db:
     def delete_article(self,article_data:dict)->bool:
         try:
             art = Article(**article_data)
-            if art.id:
-               art.id=f"{str(art.mp_id)}-{art.id}".replace("MP_WXS_","")
+            if art.id: # type: ignore
+               art.id=f"{str(art.mp_id)}-{art.id}".replace("MP_WXS_","") # type: ignore
             session=DB.get_session()
             article = session.query(Article).filter(Article.id == art.id).first()
             if article is not None:
@@ -227,6 +235,13 @@ class Db:
                 art.content_html = html
                 art.content_markdown = md
 
+            # 清理编码问题，确保存储的数据是合法的UTF-8
+            from tools.fix import sanitize_utf8
+            art.title = sanitize_utf8(art.title) if art.title else None # type: ignore
+            art.content = sanitize_utf8(art.content) if art.content else None # type: ignore
+            art.content_html = sanitize_utf8(art.content_html) if art.content_html else None # type: ignore
+            art.content_markdown = sanitize_utf8(art.content_markdown) if art.content_markdown else None # type: ignore
+			
             from core.models.base import DATA_STATUS
             art.status = DATA_STATUS.ACTIVE
             session.merge(art)

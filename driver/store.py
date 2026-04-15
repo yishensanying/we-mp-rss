@@ -14,8 +14,8 @@ class KeyStore:
         items = []
         if type(text) != str:
             for item in text:
-                if item["domain"] == ".qq.com":
-                    continue
+                # if item["domain"] == ".qq.com":
+                #     continue
                 items.append(item)
         text = json.dumps(items)
 
@@ -54,8 +54,8 @@ class KeyStore:
         """过滤 cookie items"""
         new_items = []
         for item in items:
-            if "domain" in item:
-                del item["domain"]
+            # if "domain" in item:
+                # del item["domain"]
             if item['name'] == "_clck":
                 continue
             if item['name'] == "token":

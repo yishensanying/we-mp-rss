@@ -1,40 +1,13 @@
 #!/bin/bash
 set -e
 
-# we-mp-rss 服务启动脚本
+cd /app/
+plantform="$(uname -m)"
+PLANT_PATH=${PLANT_PATH:-/app/env}
+plant="${PLANT_PATH}_${plantform}"
+source /app/environment.sh
+source "$plant/bin/activate"
 
-APP_NAME=we-mp-rss
-SERVER_PORT=8001
-
-export PYTHONPATH=$PYTHONPATH:$(pwd)
-
-# install.sh 在构建阶段写入；运行时若不 source，Playwright 会默认用 ~/.cache/ms-playwright
-if [ -f /app/environment.sh ]; then
-    # shellcheck disable=SC1091
-    . /app/environment.sh
-fi
-
-# 检查 Playwright 浏览器是否已安装
-BROWSER_TYPE=${BROWSER_TYPE:-firefox}
-if [ -n "$PLAYWRIGHT_BROWSERS_PATH" ]; then
-    BROWSER_CHECK=$(find "$PLAYWRIGHT_BROWSERS_PATH" -type d -name "${BROWSER_TYPE}-*" 2>/dev/null | head -1)
-    if [ -z "$BROWSER_CHECK" ]; then
-        echo "警告: Playwright ${BROWSER_TYPE} 浏览器未找到，请在 Docker 构建时确保 playwright install ${BROWSER_TYPE} 执行成功"
-    else
-        echo "Playwright ${BROWSER_TYPE} 浏览器已就绪: ${BROWSER_CHECK}"
-    fi
-fi
-
-# 检查是否已运行（精简镜像可能未安装 procps，无 ps 时跳过）
-PID=""
-if command -v ps >/dev/null 2>&1; then
-    PID=$(ps -ef | grep "python3 main.py" | grep -v grep | awk '{print $2}')
-fi
-if [ -n "$PID" ]; then
-    echo "ERROR: The $APP_NAME server is already running!"
-    echo "PID: $PID"
-    exit 1
-fi
 
 # APP_ENV=dev 时跳过Disconf配置
 if [ ! -f "disconf.properties" ]; then
@@ -81,13 +54,16 @@ else
     # 避免在 shell 子进程中执行（子进程设置的环境变量会丢失）。
 fi
 
-# 打印当前目录
-echo "当前工作目录: $(pwd)"
-echo "当前目录文件列表:"
-ls -la
+# 启动 Xvfb（如果需要非 headless 模式）
+if [ "$HEADLESS" != "true" ] || [ "$ENABLE_XVFB" = "true" ]; then
+    echo "启动 Xvfb 虚拟 X Server..."
+    export DISPLAY=:99
+    Xvfb :99 -screen 0 1920x1080x24 -ac &
+    XVFB_PID=$!
+    echo "Xvfb 已启动 (PID: $XVFB_PID, DISPLAY=$DISPLAY)"
+    
+    # 等待 Xvfb 启动
+    sleep 2
+fi
 
-# 启动应用（前台运行，保持容器不退出）
-echo "正在启动应用..."
-echo "$APP_NAME service starting on port $SERVER_PORT..."
-
-exec python3 main.py -job True -init True
+python3 main.py -job True

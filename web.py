@@ -1,11 +1,14 @@
+import sys
+import asyncio
+
+# Windows 需要使用 ProactorEventLoop 以支持 Playwright 子进程
+# 必须在任何事件循环创建之前设置
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 from fastapi import FastAPI, Request, APIRouter, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel
-from fastapi.openapi.models import OAuthFlowPassword
-from fastapi.openapi.utils import get_openapi
 from apis.auth import router as auth_router
 from apis.user import router as user_router
 from apis.article import router as article_router
@@ -16,7 +19,6 @@ from apis.sys_info import router as sys_info_router
 from apis.filter_rule import router as filter_rule_router
 from apis.task_queue import router as task_queue_router
 from views import router as views_router
-import apis
 import os
 from core.config import cfg,VERSION,API_BASE
 from starlette.middleware.base import BaseHTTPMiddleware

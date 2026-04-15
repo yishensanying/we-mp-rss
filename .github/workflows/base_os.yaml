@@ -1,4 +1,4 @@
-name: Docker Base Image
+name: Base OS Image GITHUB
 on:
   push:
     branches:

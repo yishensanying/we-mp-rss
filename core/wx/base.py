@@ -9,7 +9,7 @@ from core.models.base import DATA_STATUS
 from core.models.feed import Feed
 from .cfg import cfg, wx_cfg
 from core.print import print_error, print_info, print_warning, print_success
-from driver.success import setStatus
+from driver.success import setStatus,CanGetToken
 from driver.wxarticle import Web
 from core.wait import Wait
 import random
@@ -73,7 +73,7 @@ class WxGather:
         self.start_time = None  # 记录开始时间
         session=  requests.Session()
         timeout = (5, 10)  
-        session.timeout = timeout
+        session.timeout = timeout # type: ignore
         self.session=session
         self.get_token()
     def get_token(self):
@@ -276,22 +276,20 @@ class WxGather:
     
     
     def Start(self,mp_id=None):
-        self.articles=[]
-        self.current_mp_id = mp_id or ""
-        self.get_token()
-        from driver.success import getLockStatus
-        if getLockStatus():
-            self.Error("正在切换帐号码，请等待切换完成")
-            return
-        if self.token=="" or self.token is None:
-             self.Error("请先扫码登录公众号平台")
-             return
-        import time
-        self.start_time = time.time()  # 记录开始执行时间
-        self.update_mps(mp_id,Feed(
-          sync_time=int(time.time()),
-          update_time=int(time.time()),
-        ))
+        try:
+            self.articles=[]
+            self.get_token()
+            if self.token=="" or self.token is None:
+                self.Error("请先扫码登录公众号平台")
+                return
+            import time
+            self.start_time = time.time()  # 记录开始执行时间
+            self.update_mps(mp_id,Feed(
+            sync_time=int(time.time()),
+            update_time=int(time.time()),
+            ))
+        except Exception as e:
+            print_error(f"开始采集失败: {e}")
 
     def Item_Over(self,item=None,CallBack=None):
         print(f"item end")
@@ -304,17 +302,14 @@ class WxGather:
     def Error(self,error:str,code=None):
         self.Over()
         if code=="Invalid Session":
-            from jobs.failauth import send_wx_code
-            import threading
-            setStatus(False)
-            from core.queue import TaskQueue
-            TaskQueue.clear_queue()
-            import os
-            # 与 jobs.failauth 一致：YAML 中多为布尔 true，不能与字符串 "True" 比较
-            if str(os.getenv('WE_RSS.AUTH', False)) != "True" and cfg.get("server.send_code", False):
-                threading.Thread(
-                    target=send_wx_code, args=("公众号平台登录失效,请重新登录",)
-                ).start()
+            # from core.queue import TaskQueue
+            # TaskQueue.clear_queue()  # 已注释：避免微信认证失效时清空队列
+            if cfg.get("server.send_code", False):
+                from jobs.failauth import send_wx_code
+                import threading
+                setStatus(False)
+                threading.Thread(target=send_wx_code,args=(f"公众号平台登录失效,请重新登录",)).start()
+            # send_wx_code(f"公众号平台登录失效,请重新登录")
             raise Exception(error)
         # raise Exception(error)
         print_error(error)
@@ -325,10 +320,7 @@ class WxGather:
         execution_time = 0
         if self.start_time is not None:
             execution_time = end_time - self.start_time
-        
-        if getattr(self, 'articles', None) is not None:
-            print(f"成功{len(self.articles)}条")
-        
+
         # 输出执行时间统计
         if execution_time > 0:
             if execution_time < 60:
@@ -363,7 +355,7 @@ class WxGather:
                 Wait(tips="当前环境异常，完成验证后即可继续访问")
                 html_content=""
         else:
-            html_content=Web.clean_article_content(html_content, getattr(self, "current_mp_id", "") or "")
+            html_content=Web.clean_article_content(html_content)
         return html_content
 
     # 更新公众号更新状态

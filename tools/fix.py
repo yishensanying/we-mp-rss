@@ -1,9 +1,27 @@
 import copy
 from core.models.article import Article
 
+def sanitize_utf8(content: str) -> str:
+    """清理字符串中的非法UTF-8字符"""
+    if not content:
+        return ""
+    try:
+        # 尝试编码为UTF-8，忽略错误
+        if isinstance(content, str):
+            # 先编码为bytes，再解码回str，忽略错误
+            return content.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
+        elif isinstance(content, bytes):
+            return content.decode('utf-8', errors='ignore')
+        return str(content)
+    except Exception:
+        return ""
+
 def fix_content(content: str):
     if not content:
         return "", ""
+    # 先清理编码问题
+    content = sanitize_utf8(content)
+	
     from core.content_format import format_content
     from tools.mdtools.md2html import convert_markdown_to_html
     from tools.htmltools import htmltools

@@ -343,29 +343,19 @@ class WeChatAPI:
                 with open(self.qr_code_path, 'wb') as f:
                     f.write(response.content)
             else:
-                # 如果是数据，生成二维码
-                qr = qrcode.QRCode(
-                    version=1,
-                    error_correction=qrcode.constants.ERROR_CORRECT_L,
-                    box_size=10,
-                    border=4,
-                )
-                qr.add_data(qr_url)
-                qr.make(fit=True)
-                
-                img = qr.make_image(fill_color="black", back_color="white")
+                # 使用第三方 API 生成二维码，避免 tkinter 依赖
+                import urllib.parse
+                api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={urllib.parse.quote(qr_url)}"
+                response = self.session.get(api_url)
+                response.raise_for_status()
                 
                 # 确保图片格式正确
                 if not self.qr_code_path.lower().endswith('.png'):
                     self.qr_code_path = os.path.splitext(self.qr_code_path)[0] + '.png'
                 
-                # 使用BytesIO临时保存图片，确保编码正确
-                buffer = BytesIO()
-                img.save(buffer, format='PNG')
-                
                 # 写入文件
                 with open(self.qr_code_path, 'wb') as f:
-                    f.write(buffer.getvalue())
+                    f.write(response.content)
                 
             logger.info(f"二维码已保存到: {self.qr_code_path}")
             
@@ -488,10 +478,10 @@ class WeChatAPI:
             from driver.cookies import expire
             # 调用成功回调
             if self._get_account_info() is not  None:
-                logger.info("登录成功！")
+                print_success("登录成功！")
                 return True
         except Exception as e:
-            logger.error(f"处理登录失败: {str(e)}")
+            print_error(f"处理登录失败: {str(e)}")
         return False
     def _extract_login_info(self):
         """
@@ -564,6 +554,27 @@ class WeChatAPI:
                 cookie_dict[pair] = ""
         
         return cookie_dict
+    
+    def _convert_cookies_to_list(self) -> list:
+        """
+        将 requests.Session 的 cookies 转换为列表格式
+        兼容 Store.save() 期望的格式（类似 Playwright 的 get_cookies()）
+        
+        Returns:
+            cookies 列表，每个元素包含 name, value, domain, path, expires 等字段
+        """
+        cookies_list = []
+        for cookie in self.session.cookies:
+            cookie_item = {
+                'name': cookie.name,
+                'value': cookie.value,
+                'domain': cookie.domain if cookie.domain else '.weixin.qq.com',
+                'path': cookie.path if cookie.path else '/',
+            }
+            if cookie.expires:
+                cookie_item['expires'] = cookie.expires
+            cookies_list.append(cookie_item)
+        return cookies_list
     def _format_cookies_string(self) -> str:
         """
         格式化cookies为字符串
@@ -622,7 +633,7 @@ class WeChatAPI:
             account_list=self._get_account_list()
 
             if account_list is None:
-                logger.error("获取账号列表失败")
+                print_error("获取账号列表失败")
                 return None
             # 提取 biz_list 的第一项数据
             biz_list=account_list['biz_list']['list']
@@ -640,6 +651,8 @@ class WeChatAPI:
                 'wx_user_count': 0
             }
             from driver.cookies import expire
+            # 将 requests cookies 转换为列表格式（兼容 Store.save）
+            cookies_list = self._convert_cookies_to_list()
             # 将cookie转换为字典
             login_data = {
                             'cookies': self.cookies,
@@ -647,72 +660,24 @@ class WeChatAPI:
                             'token': self.token,
                             'fingerprint': self.fingerprint,
                             'wx_login_url': self.qr_code_path,
-                            'expiry': expire(self.cookies_dict)
+                            'expiry': expire(self.cookies_dict if self.cookies_dict else cookies_list)
             }
+            from driver.store import Store
+            Store.save(cookies_list)
             set_token(login_data,account_info)
             if self.login_callback:
                 self.login_callback(login_data, account_info)
             return account_info
             
         except Exception as e:
-            logger.error(f"获取账号信息失败: {str(e)}")
+            print_error(f"获取账号信息失败: {str(e)}")
             return None
 
-    def switch_account(self,username:str=""):
-        """切换微信公众号账号"""
+    async def switch_account(self,username:str=""):
+        """切换微信公众号账号（异步）"""
         self.login_with_token()
         from driver.wx import WX_API
-        WX_API.switch_account()
-        return
-        url = f"{self.base_url}/cgi-bin/switchacct?action=switch"
-        
-        headers = {
-            "accept": "*/*",
-            "accept-language": "zh-CN,zh;q=0.9",
-            "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "priority": "u=1, i",
-            "sec-ch-ua": "\"Not?A_Brand\";v=\"99\", \"Chromium\";v=\"130\"",
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": "\"Windows\"",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-            "x-requested-with": "XMLHttpRequest",
-        }
-        headers["Referer"]=f"{self.base_url}/cgi-bin/home?t=home/index&lang=zh_CN&token={self.token}"
-        params = {
-            "f": "json",
-            "username": username,
-            "fingerprint": self.fingerprint,
-            "token": self.token,
-            "lang": "zh_CN",
-            "ajax": "1"
-        }
-        
-        try:
-            response =  self.session.post(
-                url, 
-                headers=headers, 
-                data=params,
-                cookies={},
-                allow_redirects=True
-            )
-            
-            response.raise_for_status()  # 检查HTTP错误
-            
-            # 解析JSON响应
-            data = response.json()
-            print("切换账号响应:", data)
-            if data.get("base_resp").get("ret") == 0:
-                self._redirect()
-            return data
-            
-        except requests.exceptions.RequestException as e:
-            print(f"请求出错: {e}")
-            return None
-        except json.JSONDecodeError as e:
-            print(f"JSON解析出错: {e}")
-        return None
+        return await WX_API.switch_account(username)
     def _redirect(self):
         url=f"https://mp.weixin.qq.com/cgi-bin/loginpage?url=/cgi-bin/home?t=home/index&lang=zh_CN&token={self.token}"
         response=self.session.get(url)
@@ -780,7 +745,7 @@ class WeChatAPI:
             return None
             
         except Exception as e:
-            logger.error(f"获取账号列表失败: {str(e)}")
+            print_error(f"获取账号列表失败: {str(e)}")
             return None
 
     def _clean_qr_code(self):
@@ -809,11 +774,6 @@ class WeChatAPI:
 
                 token=token or get_token("token")
                 cookies=cookies or self._cookie_string_to_dict(get_token("cookie"))
-                # 无token时直接返回，避免启动阶段做不必要的外网请求
-                if token=="" or token is None:
-                    print_warning("未登录，请扫码")
-                    return False
-
                 print(f"token: {token}")
                 self.token = token
                 
@@ -821,20 +781,72 @@ class WeChatAPI:
                     self.session.cookies.update(cookies)
                     self.cookies = cookies
                 
-                # 验证登录状态
-                response = self.session.get(f"{self.home_url}?token={token}", timeout=60)
-                response.raise_for_status()
-               
-                if 'home'  in response.url:
-                    self.is_logged_in = True
-                    logger.info("Token登录成功")
-                    return self._handle_login_success()
-                else:
-                    logger.warning("Token登录失败")
+                # 验证token是否有效
+                if not token or token == "":
+                    print_warning("Token为空，请先登录")
                     return False
+                
+                # 验证登录状态
+                response = self.session.get(f"{self.home_url}?token={token}")
+                response.raise_for_status()
+                
+                # 严谨的登录成功判断
+                # 1. 检查HTTP状态码
+                if response.status_code != 200:
+                    print_warning(f"登录验证失败，HTTP状态码: {response.status_code}")
+                    return False
+                
+                # 2. 检查URL重定向
+                if 'home' not in response.url:
+                    print_warning(f"Token登录失败，重定向到: {response.url}")
+                    return False
+                
+                # 3. 检查响应内容是否包含登录成功的关键标识
+                # 微信公众平台首页通常包含特定的标识
+                content = response.text
+                login_indicators = [
+                    'wx_app_name',  # 公众号名称
+                    'user_name',    # 用户名
+                    'nick_name',    # 昵称
+                    'head_img',     # 头像
+                    'account_list', # 账号列表
+                    'data_ticket',  # 数据票据
+                ]
+                
+                # 检查是否包含至少一个登录成功标识
+                has_login_indicator = any(indicator in content for indicator in login_indicators)
+                
+                # 4. 检查是否包含登录失败标识
+                fail_indicators = [
+                    '请重新登录',
+                    '登录超时',
+                    'session过期',
+                    'invalid session',
+                    '请扫码登录',
+                    'loginpage',  # 登录页面
+                ]
+                has_fail_indicator = any(indicator in content for indicator in fail_indicators)
+                
+                # 综合判断
+                if has_fail_indicator:
+                    from jobs.failauth import send_wx_code
+                    import threading
+                    threading.Thread(target=send_wx_code,args=(f"公众号平台登录失效,请重新登录",)).start()
+                    print_warning("检测到登录失败标识，Token已失效")
+                    return False
+                
+                if not has_login_indicator:
+                    print_warning("未检测到登录成功标识，Token可能已失效")
+                    return False
+                
+                # 所有检查通过，确认登录成功
+                self.is_logged_in = True
+                print_success("Token登录成功")
+                return self._handle_login_success()
                     
         except Exception as e:
-            logger.error(f"Token登录失败: {str(e)}")
+            print_error(f"Token登录失败: {str(e)}")
+            raise e
             return False
 
     def logout(self):

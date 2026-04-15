@@ -1,172 +1,220 @@
 <template>
   <div class="task-queue-view">
-    <a-page-header title="任务队列" subtitle="查看任务队列状态和执行历史">
-      <!-- 操作栏 -->
-      <a-card :bordered="false" class="stats-card">
-        <a-space>
-          <a-button type="primary" @click="refreshAll" :loading="loading">
-            <template #icon><icon-refresh /></template>
-            刷新
-          </a-button>
-          <a-popconfirm content="确定要清空队列吗？正在执行的任务不会被中断。" @ok="handleClearQueue">
-            <a-button status="warning" :loading="clearingQueue">
-              <template #icon><icon-delete /></template>
-              清空队列
-            </a-button>
-          </a-popconfirm>
-          <a-popconfirm content="确定要清空历史记录吗？" @ok="handleClearHistory">
-            <a-button status="danger" :loading="clearingHistory">
-              <template #icon><icon-close /></template>
-              清空历史
-            </a-button>
-          </a-popconfirm>
-        </a-space>
-      </a-card>
+    <!-- 顶部状态栏 -->
+    <div class="header-bar">
+      <div class="header-left">
+        <span class="title">任务队列</span>
+        <a-tag :color="wsConnected ? 'green' : 'orange'" size="small">
+          {{ wsConnected ? '实时' : '轮询' }}
+        </a-tag>
+      </div>
+      <div class="header-right">
+        <a-button type="primary" size="small" @click="refreshAll" :loading="loading">
+          <template #icon><icon-refresh /></template>
+          刷新
+        </a-button>
+      </div>
+    </div>
 
-      <a-spin :loading="loading" style="width: 100%">
-        <!-- 队列状态概览 -->
-        <a-card :bordered="false" class="stats-card" title="队列状态">
-          <a-row :gutter="16">
-            <a-col :xs="24" :sm="12" :md="6">
-              <div class="stat-item">
-                <div class="stat-title"><icon-tag /> 队列标签</div>
-                <div class="stat-value">{{ queueStatus.tag || '默认队列' }}</div>
+    <a-spin :loading="loading" style="width: 100%">
+      <!-- 两列布局：主队列 + 内容队列 -->
+      <div class="queues-container">
+        <!-- 主队列（文章采集） -->
+        <div class="queue-section">
+          <div class="queue-header">
+            <span class="queue-title">文章采集队列</span>
+            <a-tag :color="mainQueueStatus.is_running ? 'green' : 'red'" size="small">
+              {{ mainQueueStatus.is_running ? '运行中' : '已停止' }}
+            </a-tag>
+            <div class="queue-actions">
+              <a-popconfirm content="确定要清空主队列吗？" @ok="handleClearQueue('main')">
+                <a-button size="mini" status="warning" :loading="clearingQueueMain">
+                  清空队列
+                </a-button>
+              </a-popconfirm>
+              <a-popconfirm content="确定要清空历史记录吗？" @ok="handleClearHistory('main')">
+                <a-button size="mini" status="danger" :loading="clearingHistoryMain">
+                  清空历史
+                </a-button>
+              </a-popconfirm>
+            </div>
+          </div>
+          
+          <div class="queue-content">
+            <!-- 状态概览 -->
+            <div class="status-row">
+              <div class="status-item">
+                <span class="label">待执行</span>
+                <span class="value pending">{{ mainQueueStatus.pending_count ?? 0 }}</span>
               </div>
-            </a-col>
-            <a-col :xs="24" :sm="12" :md="6">
-              <div class="stat-item">
-                <div class="stat-title">
-                  <icon-check-circle-fill v-if="queueStatus.is_running" style="color: #00b42a" />
-                  <icon-close-circle-fill v-else style="color: #f53f3f" />
-                  运行状态
+              <div class="status-item">
+                <span class="label">历史数</span>
+                <span class="value">{{ mainQueueStatus.history_count ?? 0 }}</span>
+              </div>
+            </div>
+            
+            <!-- 当前任务 -->
+            <div class="current-task-section">
+              <div class="section-title">当前任务</div>
+              <div v-if="mainQueueStatus.current_task" class="current-task">
+                <div class="task-name">
+                  <icon-play-arrow-fill style="color: #165dff" />
+                  {{ mainQueueStatus.current_task.task_name }}
                 </div>
-                <div class="stat-value" :style="queueStatus.is_running ? { color: '#00b42a' } : { color: '#f53f3f' }">
-                  {{ queueStatus.is_running ? '运行中' : '已停止' }}
+                <div class="task-info">
+                  <span>{{ mainQueueStatus.current_task.start_time }}</span>
+                  <a-tag color="blue" size="small">{{ mainQueueStatus.current_task.status }}</a-tag>
                 </div>
               </div>
-            </a-col>
-            <a-col :xs="24" :sm="12" :md="6">
-              <a-statistic
-                title="待执行任务"
-                :value="queueStatus.pending_count ?? 0"
-                :value-style="(queueStatus.pending_count ?? 0) > 0 ? { color: '#ff7d00' } : { color: '#00b42a' }"
-              >
-                <template #prefix>
-                  <icon-clock-circle />
-                </template>
-              </a-statistic>
-            </a-col>
-            <a-col :xs="24" :sm="12" :md="6">
-              <a-statistic title="历史记录数" :value="queueStatus.history_count ?? 0">
-                <template #prefix>
-                  <icon-history />
-                </template>
-              </a-statistic>
-            </a-col>
-          </a-row>
-        </a-card>
+              <div v-else class="no-task">
+                <icon-pause-circle style="font-size: 18px; color: #c9cdd4" />
+                <span>暂无执行中任务</span>
+              </div>
+            </div>
+            
+            <!-- 待执行任务 -->
+            <div class="pending-section">
+              <div class="section-title">待执行任务</div>
+              <div class="task-list" v-if="mainQueueStatus.pending_tasks && mainQueueStatus.pending_tasks.length > 0">
+                <a-tag v-for="(task, index) in mainQueueStatus.pending_tasks.slice(0, 8)" :key="index" color="arcoblue" size="small">
+                  {{ task.task_name }}
+                </a-tag>
+                <span v-if="mainQueueStatus.pending_tasks.length > 8" class="more">
+                  +{{ mainQueueStatus.pending_tasks.length - 8 }}
+                </span>
+              </div>
+              <div v-else class="no-task-small">暂无</div>
+            </div>
+            
+            <!-- 执行历史 -->
+            <div class="history-section">
+              <div class="section-title">执行历史</div>
+              <div class="history-list" v-if="mainHistory.length > 0">
+                <div v-for="(record, index) in mainHistory.slice(0, 5)" :key="index" class="history-item">
+                  <div class="history-row1">
+                    <span class="task-name">{{ record.task_name }}</span>
+                    <a-tag :color="getStatusColor(record.status)" size="small">{{ getStatusText(record.status) }}</a-tag>
+                  </div>
+                  <div class="history-row2">
+                    <span class="history-time">{{ record.start_time }}</span>
+                    <span class="history-duration" v-if="record.duration">{{ record.duration.toFixed(1) }}s</span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="no-task-small">暂无历史</div>
+            </div>
+          </div>
+        </div>
 
-        <!-- 当前执行任务 -->
-        <a-card
-          :bordered="false"
-          class="stats-card"
-          title="当前执行任务"
-          v-if="queueStatus.current_task"
-        >
-          <a-descriptions :column="{ xs: 1, sm: 2, md: 3 }" bordered>
-            <a-descriptions-item label="任务名称">
-              {{ queueStatus.current_task.task_name }}
-            </a-descriptions-item>
-            <a-descriptions-item label="开始时间">
-              {{ queueStatus.current_task.start_time }}
-            </a-descriptions-item>
-            <a-descriptions-item label="状态">
-              <a-tag color="blue">{{ queueStatus.current_task.status }}</a-tag>
-            </a-descriptions-item>
-          </a-descriptions>
-        </a-card>
+        <!-- 内容队列（补抓内容） -->
+        <div class="queue-section">
+          <div class="queue-header">
+            <span class="queue-title">内容补抓队列</span>
+            <a-tag :color="contentQueueStatus.is_running ? 'green' : 'red'" size="small">
+              {{ contentQueueStatus.is_running ? '运行中' : '已停止' }}
+            </a-tag>
+            <div class="queue-actions">
+              <a-popconfirm content="确定要清空内容队列吗？" @ok="handleClearQueue('content')">
+                <a-button size="mini" status="warning" :loading="clearingQueueContent">
+                  清空队列
+                </a-button>
+              </a-popconfirm>
+              <a-popconfirm content="确定要清空历史记录吗？" @ok="handleClearHistory('content')">
+                <a-button size="mini" status="danger" :loading="clearingHistoryContent">
+                  清空历史
+                </a-button>
+              </a-popconfirm>
+            </div>
+          </div>
+          
+          <div class="queue-content">
+            <!-- 状态概览 -->
+            <div class="status-row">
+              <div class="status-item">
+                <span class="label">待执行</span>
+                <span class="value pending">{{ contentQueueStatus.pending_count ?? 0 }}</span>
+              </div>
+              <div class="status-item">
+                <span class="label">历史数</span>
+                <span class="value">{{ contentQueueStatus.history_count ?? 0 }}</span>
+              </div>
+            </div>
+            
+            <!-- 当前任务 -->
+            <div class="current-task-section">
+              <div class="section-title">当前任务</div>
+              <div v-if="contentQueueStatus.current_task" class="current-task">
+                <div class="task-name">
+                  <icon-play-arrow-fill style="color: #165dff" />
+                  {{ contentQueueStatus.current_task.task_name }}
+                </div>
+                <div class="task-info">
+                  <span>{{ contentQueueStatus.current_task.start_time }}</span>
+                  <a-tag color="blue" size="small">{{ contentQueueStatus.current_task.status }}</a-tag>
+                </div>
+              </div>
+              <div v-else class="no-task">
+                <icon-pause-circle style="font-size: 18px; color: #c9cdd4" />
+                <span>暂无执行中任务</span>
+              </div>
+            </div>
+            
+            <!-- 待执行任务 -->
+            <div class="pending-section">
+              <div class="section-title">待执行任务</div>
+              <div class="task-list" v-if="contentQueueStatus.pending_tasks && contentQueueStatus.pending_tasks.length > 0">
+                <a-tag v-for="(task, index) in contentQueueStatus.pending_tasks.slice(0, 8)" :key="index" color="orangered" size="small">
+                  {{ task.task_name }}
+                </a-tag>
+                <span v-if="contentQueueStatus.pending_tasks.length > 8" class="more">
+                  +{{ contentQueueStatus.pending_tasks.length - 8 }}
+                </span>
+              </div>
+              <div v-else class="no-task-small">暂无</div>
+            </div>
+            
+            <!-- 执行历史 -->
+            <div class="history-section">
+              <div class="section-title">执行历史</div>
+              <div class="history-list" v-if="contentHistory.length > 0">
+                <div v-for="(record, index) in contentHistory.slice(0, 5)" :key="index" class="history-item">
+                  <div class="history-row1">
+                    <span class="task-name">{{ record.task_name }}</span>
+                    <a-tag :color="getStatusColor(record.status)" size="small">{{ getStatusText(record.status) }}</a-tag>
+                  </div>
+                  <div class="history-row2">
+                    <span class="history-time">{{ record.start_time }}</span>
+                    <span class="history-duration" v-if="record.duration">{{ record.duration.toFixed(1) }}s</span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="no-task-small">暂无历史</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-        <!-- 待执行任务列表 -->
-        <a-card
-          :bordered="false"
-          class="stats-card"
-          title="待执行任务"
-          v-if="queueStatus.pending_tasks && queueStatus.pending_tasks.length > 0"
-        >
-          <a-table
-            :columns="pendingColumns"
-            :data="queueStatus.pending_tasks"
-            :pagination="{ pageSize: 10 }"
-            :stripe="true"
-            size="small"
-          >
-            <template #task_name="{ record }">
-              <a-tag color="arcoblue">{{ record.task_name }}</a-tag>
-            </template>
-          </a-table>
-        </a-card>
-
-        <!-- 调度器状态 -->
-        <a-card :bordered="false" class="stats-card" title="定时调度器">
-          <a-descriptions :column="{ xs: 1, sm: 2, md: 3 }" bordered>
-            <a-descriptions-item label="调度器状态">
-              <a-tag :color="schedulerStatus.running ? 'green' : 'red'">
-                {{ schedulerStatus.running ? '运行中' : '已停止' }}
-              </a-tag>
-            </a-descriptions-item>
-            <a-descriptions-item label="定时任务数">
-              {{ schedulerStatus.job_count }}
-            </a-descriptions-item>
-          </a-descriptions>
-
-          <!-- 定时任务列表 -->
-          <a-table
-            v-if="schedulerJobs.length > 0"
-            :columns="schedulerColumns"
-            :data="schedulerJobs"
-            :pagination="{ pageSize: 10 }"
-            :stripe="true"
-            size="small"
-            style="margin-top: 16px"
-          >
-            <template #next_run_time="{ record }">
-              {{ record.next_run_time || '-' }}
-            </template>
-            <template #trigger="{ record }">
-              <a-tooltip :content="record.trigger">
-                <span style="cursor: pointer">{{ formatTrigger(record.trigger) }}</span>
-              </a-tooltip>
-            </template>
-          </a-table>
-        </a-card>
-
-        <!-- 执行历史 -->
-        <a-card :bordered="false" class="stats-card" title="执行历史（最近20条）">
-          <a-table
-            :columns="historyColumns"
-            :data="queueStatus.recent_history || []"
-            :pagination="{ pageSize: 10 }"
-            :stripe="true"
-            size="small"
-          >
-            <template #status="{ record }">
-              <a-tag :color="getStatusColor(record.status)">
-                {{ getStatusText(record.status) }}
-              </a-tag>
-            </template>
-            <template #duration="{ record }">
-              {{ record.duration ? `${record.duration}秒` : '-' }}
-            </template>
-            <template #error="{ record }">
-              <a-tooltip v-if="record.error" :content="record.error">
-                <span style="color: #f53f3f; cursor: pointer">{{ truncateError(record.error) }}</span>
-              </a-tooltip>
-              <span v-else>-</span>
-            </template>
-          </a-table>
-        </a-card>
-      </a-spin>
-    </a-page-header>
+      <!-- 定时调度器 -->
+      <div class="panel scheduler-panel">
+        <div class="panel-title">
+          定时调度器
+          <a-tag :color="schedulerStatus.running ? 'green' : 'red'" size="small">
+            {{ schedulerStatus.running ? '运行中' : '已停止' }}
+          </a-tag>
+        </div>
+        <div class="scheduler-content">
+          <div class="scheduler-list" v-if="schedulerJobs.length > 0">
+            <div v-for="job in schedulerJobs" :key="job.id" class="scheduler-item">
+              <span class="job-id">{{ job.id }}</span>
+              <span class="job-next">下次执行: {{ job.next_run_time || '-' }}</span>
+            </div>
+          </div>
+          <div v-else class="no-task">
+            <span>暂无定时任务</span>
+          </div>
+        </div>
+      </div>
+    </a-spin>
   </div>
 </template>
 
@@ -175,13 +223,8 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import {
   IconRefresh,
-  IconDelete,
-  IconClose,
-  IconTag,
-  IconCheckCircleFill,
-  IconCloseCircleFill,
-  IconClockCircle,
-  IconHistory,
+  IconPlayArrowFill,
+  IconPauseCircle,
 } from '@arco-design/web-vue/es/icon'
 import {
   getQueueStatus,
@@ -189,16 +232,25 @@ import {
   clearHistory,
   getSchedulerStatus,
   getSchedulerJobs,
+  getQueueHistory,
   type QueueStatus,
   type SchedulerStatus,
   type SchedulerJob,
+  type TaskRecord,
 } from '@/api/taskQueue'
+import { getToken } from '@/utils/auth'
 
 const loading = ref(false)
-const clearingQueue = ref(false)
-const clearingHistory = ref(false)
+const wsConnected = ref(false)
 
-const queueStatus = ref<QueueStatus>({
+// 清空状态
+const clearingQueueMain = ref(false)
+const clearingQueueContent = ref(false)
+const clearingHistoryMain = ref(false)
+const clearingHistoryContent = ref(false)
+
+// 主队列状态
+const mainQueueStatus = ref<QueueStatus>({
   tag: '',
   is_running: false,
   pending_count: 0,
@@ -208,6 +260,21 @@ const queueStatus = ref<QueueStatus>({
   recent_history: [],
 })
 
+// 内容队列状态
+const contentQueueStatus = ref<QueueStatus>({
+  tag: '',
+  is_running: false,
+  pending_count: 0,
+  pending_tasks: [],
+  current_task: null,
+  history_count: 0,
+  recent_history: [],
+})
+
+// 历史记录
+const mainHistory = ref<TaskRecord[]>([])
+const contentHistory = ref<TaskRecord[]>([])
+
 const schedulerStatus = ref<SchedulerStatus>({
   running: false,
   job_count: 0,
@@ -216,75 +283,82 @@ const schedulerStatus = ref<SchedulerStatus>({
 
 const schedulerJobs = ref<SchedulerJob[]>([])
 
-// 待执行任务表格列
-const pendingColumns = [
-  {
-    title: '任务名称',
-    dataIndex: 'task_name',
-    slotName: 'task_name',
-  },
-  {
-    title: '添加时间',
-    dataIndex: 'add_time',
-    width: '180px',
-  },
-]
+// WebSocket 连接
+let ws: WebSocket | null = null
+let reconnectTimer: number | null = null
+let refreshTimer: number | null = null
 
-// 定时任务表格列
-const schedulerColumns = [
-  {
-    title: '任务ID',
-    dataIndex: 'id',
-    width: '150px',
-  },
-  {
-    title: '触发器',
-    dataIndex: 'trigger',
-    slotName: 'trigger',
-  },
-  {
-    title: '下次执行时间',
-    dataIndex: 'next_run_time',
-    slotName: 'next_run_time',
-    width: '180px',
-  },
-]
+// 获取 WebSocket URL
+const getWsUrl = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const host = window.location.host
+  const apiBase = '/api/v1/wx'
+  const token = getToken()
+  const tokenParam = token ? `?token=${encodeURIComponent(token)}` : ''
+  return `${protocol}//${host}${apiBase}/task-queue/ws${tokenParam}`
+}
 
-// 执行历史表格列
-const historyColumns = [
-  {
-    title: '任务名称',
-    dataIndex: 'task_name',
-    width: '120px',
-  },
-  {
-    title: '开始时间',
-    dataIndex: 'start_time',
-    width: '180px',
-  },
-  {
-    title: '结束时间',
-    dataIndex: 'end_time',
-    width: '180px',
-  },
-  {
-    title: '耗时',
-    dataIndex: 'duration',
-    slotName: 'duration',
-    width: '80px',
-  },
-  {
-    title: '状态',
-    dataIndex: 'status',
-    slotName: 'status',
-    width: '80px',
-  },
-  {
-    title: '错误信息',
-    dataIndex: 'error',
-    slotName: 'error',
-  },
-]
+// 连接 WebSocket
+const connectWebSocket = () => {
+  if (ws) {
+    ws.close()
+  }
+
+  try {
+    const wsUrl = getWsUrl()
+    console.log('[WebSocket] 连接中...', wsUrl)
+    ws = new WebSocket(wsUrl)
+
+    ws.onopen = () => {
+      console.log('[WebSocket] 连接成功')
+      wsConnected.value = true
+      if (reconnectTimer) {
+        clearInterval(reconnectTimer)
+        reconnectTimer = null
+      }
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data)
+        if (message.type === 'queue_status' && message.data) {
+          console.log('[WebSocket] 收到状态更新')
+          // 更新队列状态
+          if (message.data.main_queue) {
+            mainQueueStatus.value = message.data.main_queue
+            mainHistory.value = message.data.main_queue.recent_history || []
+          }
+          if (message.data.content_queue) {
+            contentQueueStatus.value = message.data.content_queue
+            contentHistory.value = message.data.content_queue.recent_history || []
+          }
+        }
+      } catch (e) {
+        console.error('解析 WebSocket 消息失败:', e)
+      }
+    }
+
+    ws.onclose = (event) => {
+      console.log('[WebSocket] 连接关闭', event.code, event.reason)
+      wsConnected.value = false
+      if (!reconnectTimer) {
+        reconnectTimer = window.setInterval(() => {
+          if (!wsConnected.value) {
+            connectWebSocket()
+          }
+        }, 5000)
+      }
+    }
+
+    ws.onerror = (error) => {
+      console.error('[WebSocket] 连接错误', error)
+      wsConnected.value = false
+    }
+  } catch (error) {
+    console.error('WebSocket 连接失败:', error)
+    wsConnected.value = false
+  }
+}
 
 // 获取状态颜色
 const getStatusColor = (status: string) => {
@@ -304,7 +378,7 @@ const getStatusColor = (status: string) => {
 const getStatusText = (status: string) => {
   switch (status) {
     case 'completed':
-      return '已完成'
+      return '成功'
     case 'running':
       return '执行中'
     case 'failed':
@@ -312,25 +386,6 @@ const getStatusText = (status: string) => {
     default:
       return status
   }
-}
-
-// 截断错误信息
-const truncateError = (error: string) => {
-  if (error.length > 30) {
-    return error.substring(0, 30) + '...'
-  }
-  return error
-}
-
-// 格式化触发器显示
-const formatTrigger = (trigger: string) => {
-  if (!trigger) return '-'
-  // 简化显示
-  const parts = trigger.split(',')
-  if (parts.length > 2) {
-    return parts.slice(0, 2).join(',') + '...'
-  }
-  return trigger
 }
 
 // 加载所有数据
@@ -342,11 +397,17 @@ const refreshAll = async () => {
       getSchedulerStatus(),
       getSchedulerJobs(),
     ])
-    console.log('Queue data:', queueData)
-    console.log('Scheduler data:', schedulerData)
-    console.log('Jobs data:', jobsData)
     
-    queueStatus.value = queueData
+    // 更新队列状态
+    if (queueData.main_queue) {
+      mainQueueStatus.value = queueData.main_queue
+      mainHistory.value = queueData.main_queue.recent_history || []
+    }
+    if (queueData.content_queue) {
+      contentQueueStatus.value = queueData.content_queue
+      contentHistory.value = queueData.content_queue.recent_history || []
+    }
+    
     schedulerStatus.value = schedulerData
     schedulerJobs.value = jobsData.jobs || []
   } catch (error: any) {
@@ -358,98 +419,419 @@ const refreshAll = async () => {
 }
 
 // 清空队列
-const handleClearQueue = async () => {
-  clearingQueue.value = true
+const handleClearQueue = async (queueType: 'main' | 'content') => {
+  if (queueType === 'main') {
+    clearingQueueMain.value = true
+  } else {
+    clearingQueueContent.value = true
+  }
   try {
-    await clearQueue()
+    await clearQueue(queueType)
     Message.success('队列已清空')
     await refreshAll()
   } catch (error: any) {
     Message.error(error.message || '清空队列失败')
   } finally {
-    clearingQueue.value = false
+    if (queueType === 'main') {
+      clearingQueueMain.value = false
+    } else {
+      clearingQueueContent.value = false
+    }
   }
 }
 
 // 清空历史
-const handleClearHistory = async () => {
-  clearingHistory.value = true
+const handleClearHistory = async (queueType: 'main' | 'content') => {
+  if (queueType === 'main') {
+    clearingHistoryMain.value = true
+  } else {
+    clearingHistoryContent.value = true
+  }
   try {
-    await clearHistory()
+    await clearHistory(queueType)
     Message.success('历史记录已清空')
     await refreshAll()
   } catch (error: any) {
     Message.error(error.message || '清空历史失败')
   } finally {
-    clearingHistory.value = false
+    if (queueType === 'main') {
+      clearingHistoryMain.value = false
+    } else {
+      clearingHistoryContent.value = false
+    }
   }
 }
 
-// 自动刷新定时器
-let refreshTimer: number | null = null
-
 onMounted(() => {
   refreshAll()
-  // 每10秒自动刷新
+  connectWebSocket()
   refreshTimer = window.setInterval(() => {
-    refreshAll()
+    if (!wsConnected.value) {
+      refreshAll()
+    }
   }, 10000)
 })
 
 onUnmounted(() => {
+  if (ws) {
+    ws.close()
+    ws = null
+  }
+  if (reconnectTimer) {
+    clearInterval(reconnectTimer)
+    reconnectTimer = null
+  }
   if (refreshTimer) {
     clearInterval(refreshTimer)
+    refreshTimer = null
   }
 })
 </script>
 
 <style scoped>
 .task-queue-view {
-  padding: 16px;
+  padding: 12px;
+  height: calc(100vh - 100px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.stats-card {
-  margin-bottom: 16px;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
+/* 顶部状态栏 */
+.header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--color-bg-2);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
-.stats-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-}
-
-.stat-item {
-  text-align: center;
-  padding: 8px 0;
-}
-
-.stat-title {
-  font-size: 14px;
-  color: var(--color-text-2);
-  margin-bottom: 8px;
+.header-left {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
+  gap: 10px;
 }
 
-.stat-value {
-  font-size: 24px;
-  font-weight: 500;
+.header-left .title {
+  font-size: 16px;
+  font-weight: 600;
   color: var(--color-text-1);
 }
 
-:deep(.arco-statistic-title) {
+.header-right {
+  display: flex;
+  gap: 8px;
+}
+
+/* 两列队列布局 */
+.queues-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.queue-section {
+  background: var(--color-bg-2);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.queue-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--color-fill-1);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.queue-title {
   font-size: 14px;
-  margin-bottom: 8px;
+  font-weight: 600;
+  color: var(--color-text-1);
 }
 
-:deep(.arco-statistic-content) {
-  font-size: 24px;
+.queue-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
 }
 
-:deep(.arco-table-wrapper) {
-  margin-top: -8px;
+.queue-content {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 状态行 */
+.status-row {
+  display: flex;
+  gap: 12px;
+}
+
+.status-item {
+  flex: 1;
+  text-align: center;
+  padding: 8px;
+  background: var(--color-fill-1);
+  border-radius: 4px;
+}
+
+.status-item .label {
+  display: block;
+  font-size: 11px;
+  color: var(--color-text-3);
+  margin-bottom: 2px;
+}
+
+.status-item .value {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.status-item .value.pending {
+  color: #ff7d00;
+}
+
+/* 当前任务 */
+.current-task-section {
+  background: var(--color-fill-1);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.section-title {
+  font-size: 11px;
+  color: var(--color-text-3);
+  margin-bottom: 6px;
+}
+
+.current-task {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.current-task .task-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.current-task .task-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--color-text-3);
+}
+
+.no-task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-3);
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.no-task-small {
+  color: var(--color-text-3);
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+/* 待执行任务 */
+.pending-section {
+  background: var(--color-fill-1);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.task-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.task-list .more {
+  font-size: 11px;
+  color: var(--color-text-3);
+  padding: 2px 6px;
+}
+
+/* 历史记录 */
+.history-section {
+  background: var(--color-fill-1);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-item {
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.history-row2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--color-text-3);
+}
+
+.history-item .task-name {
+  color: var(--color-text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.history-time {
+  color: var(--color-text-3);
+}
+
+.history-duration {
+  color: var(--color-text-3);
+}
+
+/* 定时调度器 */
+.scheduler-panel {
+  background: var(--color-bg-2);
+  border-radius: 6px;
+  padding: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-2);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scheduler-content {
+  background: var(--color-fill-1);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.scheduler-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scheduler-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  background: var(--color-bg-2);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.scheduler-item .job-id {
+  color: var(--color-text-1);
+  font-weight: 500;
+}
+
+.scheduler-item .job-next {
+  color: var(--color-text-3);
+  font-size: 11px;
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .queues-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .task-queue-view {
+    padding: 8px;
+    height: auto;
+    min-height: calc(100vh - 100px);
+  }
+  
+  .header-bar {
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  
+  .header-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .queue-section {
+    margin-bottom: 0;
+  }
+  
+  .queue-header {
+    flex-wrap: wrap;
+    padding: 8px 10px;
+  }
+  
+  .queue-title {
+    font-size: 13px;
+  }
+  
+  .queue-actions {
+    width: 100%;
+    margin-left: 0;
+    margin-top: 6px;
+    justify-content: flex-end;
+  }
+  
+  .queue-content {
+    padding: 8px;
+    gap: 8px;
+  }
+  
+  .status-item .value {
+    font-size: 16px;
+  }
+  
+  .history-item .task-name {
+    max-width: 100px;
+  }
+  
+  .scheduler-item {
+    padding: 5px 8px;
+  }
 }
 </style>

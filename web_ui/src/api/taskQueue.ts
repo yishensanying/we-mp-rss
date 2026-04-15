@@ -32,6 +32,11 @@ export interface QueueStatus {
   recent_history: TaskRecord[];
 }
 
+export interface AllQueuesStatus {
+  main_queue: QueueStatus | null;
+  content_queue: QueueStatus | null;
+}
+
 export interface SchedulerJob {
   id: string;
   name: string;
@@ -46,32 +51,14 @@ export interface SchedulerStatus {
   next_run_times: [string, string | null][];
 }
 
-export const getQueueStatus = async (): Promise<QueueStatus> => {
+// 获取所有队列状态
+export const getQueueStatus = async (): Promise<AllQueuesStatus> => {
   try {
     const response = await http.get('/wx/task-queue/status');
-    console.log('Queue status response:', response);
-    // http 拦截器已经解包了 response.data.data
-    // response 可能是 data 本身
     const data = response as any;
-    if (data && typeof data === 'object') {
-      return {
-        tag: data.tag || '',
-        is_running: data.is_running || false,
-        pending_count: data.pending_count || 0,
-        pending_tasks: data.pending_tasks || [],
-        current_task: data.current_task || null,
-        history_count: data.history_count || 0,
-        recent_history: data.recent_history || [],
-      };
-    }
     return {
-      tag: '',
-      is_running: false,
-      pending_count: 0,
-      pending_tasks: [],
-      current_task: null,
-      history_count: 0,
-      recent_history: [],
+      main_queue: data?.main_queue || null,
+      content_queue: data?.content_queue || null,
     };
   } catch (error) {
     console.error('Get queue status error:', error);
@@ -79,13 +66,66 @@ export const getQueueStatus = async (): Promise<QueueStatus> => {
   }
 };
 
-export const getQueueHistory = async (limit: number = 20): Promise<{ history: TaskRecord[]; total: number }> => {
+// 获取单个队列状态
+export const getMainQueueStatus = async (): Promise<QueueStatus> => {
   try {
-    const response = await http.get('/wx/task-queue/history', { params: { limit } });
+    const response = await http.get('/wx/task-queue/main/status');
+    const data = response as any;
+    return normalizeQueueStatus(data);
+  } catch (error) {
+    console.error('Get main queue status error:', error);
+    throw error;
+  }
+};
+
+export const getContentQueueStatus = async (): Promise<QueueStatus> => {
+  try {
+    const response = await http.get('/wx/task-queue/content/status');
+    const data = response as any;
+    return normalizeQueueStatus(data);
+  } catch (error) {
+    console.error('Get content queue status error:', error);
+    throw error;
+  }
+};
+
+const normalizeQueueStatus = (data: any): QueueStatus => {
+  if (data && typeof data === 'object') {
+    return {
+      tag: data.tag || '',
+      is_running: data.is_running || false,
+      pending_count: data.pending_count || 0,
+      pending_tasks: data.pending_tasks || [],
+      current_task: data.current_task || null,
+      history_count: data.history_count || 0,
+      recent_history: data.recent_history || [],
+    };
+  }
+  return {
+    tag: '',
+    is_running: false,
+    pending_count: 0,
+    pending_tasks: [],
+    current_task: null,
+    history_count: 0,
+    recent_history: [],
+  };
+};
+
+export const getQueueHistory = async (
+  page: number = 1,
+  pageSize: number = 10,
+  queueType: 'main' | 'content' = 'main'
+): Promise<{ history: TaskRecord[]; total: number; page: number; page_size: number; total_pages: number }> => {
+  try {
+    const response = await http.get('/wx/task-queue/history', { params: { page, page_size: pageSize, queue_type: queueType } });
     const data = response as any;
     return {
       history: data?.history || [],
       total: data?.total || 0,
+      page: data?.page || 1,
+      page_size: data?.page_size || 10,
+      total_pages: data?.total_pages || 0,
     };
   } catch (error) {
     console.error('Get queue history error:', error);
@@ -93,12 +133,12 @@ export const getQueueHistory = async (limit: number = 20): Promise<{ history: Ta
   }
 };
 
-export const clearQueue = async (): Promise<void> => {
-  await http.post('/wx/task-queue/clear');
+export const clearQueue = async (queueType: 'main' | 'content' = 'main'): Promise<void> => {
+  await http.post('/wx/task-queue/clear', null, { params: { queue_type: queueType } });
 };
 
-export const clearHistory = async (): Promise<void> => {
-  await http.post('/wx/task-queue/history/clear');
+export const clearHistory = async (queueType: 'main' | 'content' = 'main'): Promise<void> => {
+  await http.post('/wx/task-queue/history/clear', null, { params: { queue_type: queueType } });
 };
 
 export const getSchedulerStatus = async (): Promise<SchedulerStatus> => {

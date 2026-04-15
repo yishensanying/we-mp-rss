@@ -45,8 +45,6 @@ def set_token(data:any,ext_data:any=None):
         _save_to_local(token_data)
 
     print_success(f"Token:{data.get('token')} \n到期时间:{data.get('expiry')['expiry_time']}\n")
-    from driver.success import setLockStatus
-    setLockStatus(False)
     from jobs.notice import sys_notice
 
 #     sys_notice(f"""WeRss授权成功
@@ -70,6 +68,8 @@ def get(key:str,default:str="")->str:
     value = token_data.get(key, default)
     if isinstance(value, dict):
         return json.dumps(value)
+    if value=="None":
+        return ''
     return str(value) if value is not None else default
 
 

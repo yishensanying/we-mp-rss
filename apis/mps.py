@@ -60,7 +60,7 @@ def _ensure_featured_feed(session):
     featured_feed = Feed(
         id=FEATURED_MP_ID,
         mp_name=FEATURED_MP_NAME,
-        mp_cover="logo.svg",
+        mp_cover="",
         mp_intro=FEATURED_MP_INTRO,
         status=1,
         sync_time=0,
@@ -73,7 +73,12 @@ def _ensure_featured_feed(session):
     return featured_feed
 
 
-def _run_add_featured_article_task(task_id: str, url: str):
+def _run_add_featured_article_task_wrapper(task_id: str, url: str):
+    """包装器:在线程中运行 async 函数"""
+    import asyncio
+    asyncio.run(_run_add_featured_article_task(task_id, url))
+
+async def _run_add_featured_article_task(task_id: str, url: str):
     session = None
     fetcher = None
     try:
@@ -92,7 +97,7 @@ def _run_add_featured_article_task(task_id: str, url: str):
 
         print(f"[featured_article_task] fetching article task_id={task_id} url={target_url}")
         fetcher = WXArticleFetcher()
-        info = fetcher.get_article_content(target_url)
+        info = await fetcher.get_article_content(target_url)
         if not info or info.get("fetch_error"):
             raise ValueError(info.get("fetch_error") or "文章抓取失败，请检查链接或登录状态")
 
@@ -104,8 +109,9 @@ def _run_add_featured_article_task(task_id: str, url: str):
             raise ValueError("无法解析文章ID，请确认链接格式")
 
         _ensure_featured_feed(session)
-        session.commit()
 
+
+        article_id = f"{FEATURED_MP_ID}-{raw_article_id}".replace("MP_WXS_", "")
         now = datetime.now()
         publish_time = info.get("publish_time")
         if not isinstance(publish_time, int):
@@ -115,8 +121,6 @@ def _run_add_featured_article_task(task_id: str, url: str):
                 publish_time = int(now.timestamp())
 
         article_data = {
-            "id": raw_article_id,
-            "mp_id": FEATURED_MP_ID,
             "title": info.get("title") or target_url,
             "description": info.get("description") or fetcher.get_description(info.get("content") or ""),
             "content": info.get("content") or "",
@@ -125,10 +129,39 @@ def _run_add_featured_article_task(task_id: str, url: str):
             "pic_url": info.get("topic_image") or info.get("pic_url") or "",
         }
 
-        # 统一通过 DB.add_article 处理文章入库与内容转换
-        created = DB.add_article(article_data)
-        article_id = f"{FEATURED_MP_ID}-{raw_article_id}".replace("MP_WXS_", "")
-        print(f"[featured_article_task] db committed via DB.add_article task_id={task_id} article_id={article_id}")
+        existing = session.query(Article).filter(Article.id == article_id).first()
+        if existing:
+            existing.mp_id = FEATURED_MP_ID
+            existing.title = article_data["title"]
+            existing.description = article_data["description"]
+            existing.content = article_data["content"]
+            existing.publish_time = article_data["publish_time"]
+            existing.url = article_data["url"]
+            existing.pic_url = article_data["pic_url"]
+            existing.status = DATA_STATUS.ACTIVE
+            existing.updated_at = int(now.timestamp())
+            existing.updated_at_millis = int(now.timestamp() * 1000)
+            created = False
+        else:
+            session.add(Article(
+                id=article_id,
+                mp_id=FEATURED_MP_ID,
+                title=article_data["title"],
+                description=article_data["description"],
+                content=article_data["content"],
+                publish_time=article_data["publish_time"],
+                url=article_data["url"],
+                pic_url=article_data["pic_url"],
+                status=DATA_STATUS.ACTIVE,
+                created_at=now,
+                updated_at=int(now.timestamp()),
+                updated_at_millis=int(now.timestamp() * 1000),
+                is_read=0,
+                is_favorite=0
+            ))
+            created = True
+
+        session.commit()
         clear_cache_pattern("articles_list")
         clear_cache_pattern("article_detail")
         clear_cache_pattern("home_page")
@@ -159,7 +192,7 @@ def _run_add_featured_article_task(task_id: str, url: str):
     finally:
         if fetcher is not None:
             try:
-                fetcher.Close()
+                await fetcher.Close()
             except Exception:
                 pass
         if session is not None:
@@ -212,7 +245,7 @@ async def get_mps(
             query = query.filter(Feed.mp_name.ilike(f"%{kw}%"))
         if status is not None:
             query = query.filter(Feed.status == status)
-        total = query.count() + 1
+        total = query.count()
         mps = query.order_by(Feed.created_at.desc()).limit(limit).offset(offset).all()
         mps_list = [{
                 "id": mp.id,
@@ -222,9 +255,6 @@ async def get_mps(
                 "status": mp.status,
                 "created_at": mp.created_at.isoformat()
             } for mp in mps]
-        # 只在筛选全部且无搜索关键词时添加精选文章
-        if offset == 0 and status is None and not kw:
-            mps_list.insert(0, build_featured_mp_item())
         return success_response({
             "list": mps_list,
             "page": {
@@ -277,7 +307,7 @@ async def add_featured_article(
             "message": "任务已创建"
         })
         threading.Thread(
-            target=_run_add_featured_article_task,
+            target=_run_add_featured_article_task_wrapper,
             args=(task_id, target_url),
             daemon=True
         ).start()
@@ -401,7 +431,7 @@ async def get_mp_by_article(
     current_user: dict = Depends(get_current_user_or_ak)
 ):
     try:
-        info =await WXArticleFetcher().async_get_article_content(url)
+        info = await WXArticleFetcher().get_article_content(url)
         
         if not info:
             raise HTTPException(
@@ -474,7 +504,7 @@ async def add_mp(
             from core.queue import TaskQueue
             from core.wx import WxGather
             Max_page=int(cfg.get("max_page","2"))
-            TaskQueue.add_task( WxGather().Model().get_Articles,faker_id=feed.faker_id,Mps_id=feed.id,CallBack=UpdateArticle,MaxPage=Max_page,Mps_title=mp_name)
+            TaskQueue.add_task(WxGather().Model().get_Articles, faker_id=feed.faker_id, Mps_id=feed.id, CallBack=UpdateArticle, MaxPage=Max_page, Mps_title=mp_name, task_name=mp_name)
             
         return success_response({
             "id": feed.id,

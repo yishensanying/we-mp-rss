@@ -27,6 +27,7 @@ from typing import Optional
 router = APIRouter(prefix=f"/auth", tags=["认证"])
 from driver.success import Success
 from driver.wx_api import get_qr_code #通过API登录
+from driver.wx import WX_API
 def ApiSuccess(data):
     if data != None:
             print("\n登录结果:")
@@ -50,7 +51,7 @@ async def qr_status(current_user=Depends(get_current_user)):
      return success_response(WX_API.QrStatus())    
 @router.get("/qr/over",summary="扫码完成")
 async def qr_success(current_user=Depends(get_current_user)):
-     return success_response(WX_API.Close())    
+     return success_response(await WX_API.Close())    
 @router.post("/login", summary="用户登录")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = authenticate_user(form_data.username, form_data.password)
@@ -420,4 +421,30 @@ async def reset_password(req: ResetPasswordRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_response(code=50001, message=f"重置失败: {str(e)}")
+        )
+
+
+@router.post("/switch", summary="切换微信账号")
+async def switch_wechat_account(current_user: dict = Depends(get_current_user)):
+    """
+    切换微信公众号账号
+    
+    用法示例：
+    ```
+    POST /api/v1/auth/switch
+    Authorization: Bearer {token}
+    ```
+    """
+    import asyncio
+
+    try:
+        # 调用切换账号方法（异步）
+        result = await WX_API.switch_account()
+        return success_response(result, "切换账号成功" if result else "切换账号失败")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_response(code=50001, message=f"切换账号失败: {str(e)}")
         )
